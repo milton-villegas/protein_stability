@@ -55,7 +55,7 @@ python designer/factorial_designer_gui.pyw
 ```
 
 - Add factors and levels (units supported: M, mM, µM, nM, %, w/v, v/v).
-- Real‑time combination counter shows the number of conditions.
+- Combination counter shows the number of conditions.
 - **Export** produces:
   - `*.xlsx` (Design table)
   - `*.csv` (Opentrons volumes in **µL**, ready for the protocol)
