@@ -722,7 +722,7 @@ class BayesianOptimizer:
             name="doe_optimization",
             parameters=parameters,
             objectives={self.response_column: ObjectiveProperties(minimize=minimize)},
-            choose_generation_strategy_kwargs={"num_initialization_trials": 0}  # Skip Sobol, go straight to BO
+            choose_generation_strategy_kwargs={"num_initialization_trials": 5}  # Use Sobol for first 5 trials if needed
         )
         
         # Add existing data as completed trials using sanitized names
@@ -1131,12 +1131,19 @@ class BayesianOptimizer:
 
             # PANEL 2: Acquisition Function (Top-Right)
             ax2 = fig.add_subplot(gs[0, 1])
-            # Calculate Expected Improvement (EI)
+            # Calculate Expected Improvement (EI) - Proper formula
             current_best = self.data[self.response_column].max()  # Assuming maximize
-            Z_improvement = Z_mean - current_best
-            Z_improvement[Z_improvement < 0] = 0  # Only positive improvements
-            # EI = improvement * probability
-            Z_ei = Z_improvement * (1.0 / (Z_sem + 1e-6))  # Simple EI approximation
+
+            # Avoid division by zero
+            Z_sem_safe = np.where(Z_sem > 1e-6, Z_sem, 1e-6)
+
+            # Standardized improvement
+            Z_score = (Z_mean - current_best) / Z_sem_safe
+
+            # Proper EI formula: EI = (mu - best) * Phi(Z) + sigma * phi(Z)
+            # where Phi is CDF and phi is PDF of standard normal
+            Z_ei = (Z_mean - current_best) * scipy_stats.norm.cdf(Z_score) + Z_sem_safe * scipy_stats.norm.pdf(Z_score)
+            Z_ei = np.maximum(Z_ei, 0)  # EI is always non-negative
 
             contour2 = ax2.contourf(X, Y, Z_ei, levels=15, cmap='plasma', alpha=0.9)
             cbar2 = plt.colorbar(contour2, ax=ax2)
@@ -1361,9 +1368,12 @@ class BayesianOptimizer:
             # EXPORT 2: Acquisition Function
             fig2, ax2 = plt.subplots(1, 1, figsize=(9, 7))
             current_best = self.data[self.response_column].max()
-            Z_improvement = Z_mean - current_best
-            Z_improvement[Z_improvement < 0] = 0
-            Z_ei = Z_improvement * (1.0 / (Z_sem + 1e-6))
+
+            # Proper EI formula
+            Z_sem_safe = np.where(Z_sem > 1e-6, Z_sem, 1e-6)
+            Z_score = (Z_mean - current_best) / Z_sem_safe
+            Z_ei = (Z_mean - current_best) * scipy_stats.norm.cdf(Z_score) + Z_sem_safe * scipy_stats.norm.pdf(Z_score)
+            Z_ei = np.maximum(Z_ei, 0)
             contour2 = ax2.contourf(X, Y, Z_ei, levels=20, cmap='plasma', alpha=0.9)
             cbar2 = plt.colorbar(contour2, ax=ax2)
             cbar2.ax.tick_params(labelsize=11)
