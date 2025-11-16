@@ -1093,15 +1093,13 @@ class BayesianOptimizer:
             ax3.clabel(contour_lines3, inline=True, fontsize=7, fmt='%.2f')
 
             # Mark observed points
-            ax3.scatter(factor1_values, factor2_values, c='black', s=80,
+            ax3.scatter(existing_x, existing_y, c='black', s=80,
                        marker='o', edgecolors='white', linewidth=2,
                        label='Observed Points', zorder=5)
 
-            # Mark the best point
-            best_idx = np.argmax(response_values)
-            ax3.scatter([factor1_values[best_idx]], [factor2_values[best_idx]],
-                       c='lime', s=200, marker='*', edgecolors='black',
-                       linewidth=2, label='Best Point', zorder=6)
+            # Mark the best point (already calculated above)
+            ax3.scatter([best_x], [best_y], c='lime', s=200, marker='*',
+                       edgecolors='black', linewidth=2, label='Best Point', zorder=6)
 
             # Add colorbar
             cbar3 = plt.colorbar(contour3, ax=ax3, orientation='vertical', pad=0.02, shrink=0.9)
@@ -1116,8 +1114,8 @@ class BayesianOptimizer:
                     verticalalignment='top', bbox=dict(boxstyle='round',
                     facecolor='white', alpha=0.8, edgecolor='#CCCCCC'))
 
-            ax3.set_xlabel(factor1_label, fontsize=10, fontweight='bold')
-            ax3.set_ylabel(factor2_label, fontsize=10, fontweight='bold')
+            ax3.set_xlabel(factor_x_original, fontsize=10, fontweight='bold')
+            ax3.set_ylabel(factor_y_original, fontsize=10, fontweight='bold')
             ax3.set_title('Model Uncertainty (GP Std. Error)', fontsize=11, fontweight='bold', pad=10)
             ax3.legend(fontsize=8, framealpha=0.9, edgecolor='#CCCCCC', loc='lower right')
             ax3.grid(True, alpha=0.15, linestyle='-', linewidth=0.5)
@@ -1306,15 +1304,13 @@ class BayesianOptimizer:
             ax3.clabel(contour_lines3, inline=True, fontsize=9, fmt='%.2f')
 
             # Mark observed points
-            ax3.scatter(factor1_values, factor2_values, c='black', s=120,
+            ax3.scatter(existing_x, existing_y, c='black', s=120,
                        marker='o', edgecolors='white', linewidth=2.5,
                        label='Observed Points', zorder=5)
 
-            # Mark the best point
-            best_idx = np.argmax(response_values)
-            ax3.scatter([factor1_values[best_idx]], [factor2_values[best_idx]],
-                       c='lime', s=350, marker='*', edgecolors='black',
-                       linewidth=3, label='Best Point', zorder=6)
+            # Mark the best point (already calculated above)
+            ax3.scatter([best_x], [best_y], c='lime', s=350, marker='*',
+                       edgecolors='black', linewidth=3, label='Best Point', zorder=6)
 
             # Add colorbar
             cbar3 = plt.colorbar(contour3, ax=ax3, orientation='vertical', pad=0.02, shrink=0.9)
@@ -1330,8 +1326,8 @@ class BayesianOptimizer:
                     verticalalignment='top', bbox=dict(boxstyle='round',
                     facecolor='white', alpha=0.9, edgecolor='#CCCCCC', linewidth=2))
 
-            ax3.set_xlabel(factor1_label, fontsize=13, fontweight='bold', color='#333333')
-            ax3.set_ylabel(factor2_label, fontsize=13, fontweight='bold', color='#333333')
+            ax3.set_xlabel(factor_x_original, fontsize=13, fontweight='bold', color='#333333')
+            ax3.set_ylabel(factor_y_original, fontsize=13, fontweight='bold', color='#333333')
             ax3.set_title('Model Uncertainty (GP Standard Error)',
                         fontsize=15, fontweight='bold', pad=15, color='#1a1a1a')
             ax3.legend(fontsize=11, framealpha=0.95, edgecolor='#CCCCCC', loc='lower right')
