@@ -32,6 +32,7 @@ import re
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 import numpy as np
+from utils.constants import AVAILABLE_FACTORS
 
 # Optional XLSX export
 try:
@@ -54,23 +55,6 @@ try:
     HAS_SMT = True
 except Exception:
     HAS_SMT = False
-
-# Available factors with display names
-AVAILABLE_FACTORS = {
-    "buffer pH": "Buffer pH",
-    "buffer_concentration": "Buffer Conc (mM)",
-    "glycerol": "Glycerol (%)",
-    "nacl": "NaCl (mM)",
-    "kcl": "KCl (mM)",
-    "zinc": "Zinc (mM)",
-    "magnesium": "Magnesium (mM)",
-    "calcium": "Calcium (mM)",
-    "dmso": "DMSO (%)",
-    "detergent": "Detergent",  # Categorical - accepts names like Tween-20, Triton, etc.
-    "detergent_concentration": "Detergent (%)",
-    "reducing_agent": "Reducing Agent",  # Categorical - accepts names like DTT, TCEP, BME, etc.
-    "reducing_agent_concentration": "Reducing Agent (mM)",
-}
 
 def validate_numeric_input(action, char, entry_value):
     """Validate numeric input - allows digits, decimal, minus, comma for multiple values"""
@@ -2231,12 +2215,17 @@ class DesignerTab(ttk.Frame):
             else:
                 design_name = display_text
             
-            messagebox.showinfo("Export Successful!",
-                f"Files exported successfully!\n\n"
-                f"Design Type: {design_name}\n"
-                f"📊 Sample tracking:\n{xlsx_path}\n\n"
-                f"🤖 Opentrons volumes:\n{csv_path}\n\n"
-                f"Total: {total} combinations ({plates} plates)")
+            # Extract filenames and directory for clean message
+            xlsx_filename = os.path.basename(xlsx_path)
+            csv_filename = os.path.basename(csv_path)
+            directory = os.path.dirname(xlsx_path)
+
+            messagebox.showinfo("Export Complete",
+                f"Files saved:\n\n"
+                f"    {xlsx_filename}\n"
+                f"    {csv_filename}\n\n"
+                f"Location:\n"
+                f"    {directory}")
         
         except Exception as e:
             messagebox.showerror("Export Failed", f"Error during export:\n\n{str(e)}")
