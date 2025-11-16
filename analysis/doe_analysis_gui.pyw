@@ -915,7 +915,60 @@ class BayesianOptimizer:
             print(f"⚠ Error extracting feature importances: {e}")
             print("  Falling back to range-based selection")
 
-        # Fallback: Select factors with largest ranges
+        # Fallback: Sensitivity analysis - works for all model types
+        # Measure how much each factor affects the predicted response
+        try:
+            print("  Using sensitivity analysis for factor selection...")
+
+            # Create baseline: median values for all factors
+            baseline = {}
+            for factor in self.factor_columns:
+                sanitized = self.reverse_mapping[factor]
+                if factor in self.numeric_factors:
+                    baseline[sanitized] = float(self.data[factor].median())
+                else:
+                    baseline[sanitized] = str(self.data[factor].mode()[0])
+
+            # Measure sensitivity for each numeric factor
+            sensitivities = {}
+            for factor in self.numeric_factors:
+                min_val, max_val = self.factor_bounds[factor]
+                if max_val - min_val == 0:
+                    continue
+
+                sanitized = self.reverse_mapping[factor]
+
+                # Test at min and max
+                params_min = baseline.copy()
+                params_min[sanitized] = float(min_val)
+                params_max = baseline.copy()
+                params_max[sanitized] = float(max_val)
+
+                # Get predictions
+                pred_min, _ = self.ax_client.get_model_predictions_for_parameterizations(
+                    parameterizations=[params_min],
+                    metric_names=[self.response_column]
+                )[0][self.response_column]
+
+                pred_max, _ = self.ax_client.get_model_predictions_for_parameterizations(
+                    parameterizations=[params_max],
+                    metric_names=[self.response_column]
+                )[0][self.response_column]
+
+                # Sensitivity = absolute change in prediction
+                sensitivities[factor] = abs(pred_max - pred_min)
+
+            if len(sensitivities) >= 2:
+                print(f"  Sensitivities: {sensitivities}")
+                sorted_factors = sorted(sensitivities.items(), key=lambda x: x[1], reverse=True)
+                selected = [f[0] for f in sorted_factors[:2]]
+                print(f"  Selected factors based on sensitivity: {selected}")
+                return selected
+
+        except Exception as e:
+            print(f"  Sensitivity analysis failed: {e}")
+
+        # Ultimate fallback: largest parameter ranges
         factor_ranges = {}
         for factor in self.numeric_factors:
             min_val, max_val = self.factor_bounds[factor]
