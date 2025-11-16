@@ -924,15 +924,15 @@ class BayesianOptimizer:
             from ax.analysis.plotly.sensitivity import SensitivityAnalysisPlot
 
             analysis = SensitivityAnalysisPlot()
-            cards = analysis.compute(
+            card = analysis.compute(
                 experiment=self.ax_client._experiment,
                 generation_strategy=self.ax_client._generation_strategy
             )
 
-            # Extract Sobol indices from the analysis cards
+            # Extract Sobol indices from the analysis card
             # The card contains plotly data with sensitivity values
-            if cards and len(cards) > 0:
-                card_data = cards[0].blob
+            if card is not None:
+                card_data = card.blob
 
                 # Parse Sobol indices from the plotly figure data
                 # The data structure contains parameter names and their total Sobol indices
