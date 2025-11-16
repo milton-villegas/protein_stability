@@ -1142,6 +1142,12 @@ class BayesianOptimizer:
                        marker='*', edgecolors='black', linewidth=2, zorder=5,
                        label='Current Best')
 
+            # Set Y-axis limits based on data range (with 10% margin)
+            y_min = min(response_values.min(), cumulative_best.min())
+            y_max = cumulative_best.max()
+            y_range = y_max - y_min
+            ax4.set_ylim(y_min - 0.1 * y_range, y_max + 0.05 * y_range)
+
             ax4.set_xlabel('Experiment Number', fontsize=10, fontweight='bold')
             ax4.set_ylabel(f'Best {self.response_column}', fontsize=10, fontweight='bold')
             ax4.set_title('Optimization Progress', fontsize=11, fontweight='bold', pad=10)
@@ -1351,6 +1357,12 @@ class BayesianOptimizer:
             ax4.scatter([len(iterations)], [cumulative_best[-1]], c='gold', s=400,
                        marker='*', edgecolors='black', linewidth=3, zorder=5,
                        label='Current Best')
+            # Set Y-axis limits based on data range (with 10% margin)
+            y_min = min(response_values.min(), cumulative_best.min())
+            y_max = cumulative_best.max()
+            y_range = y_max - y_min
+            ax4.set_ylim(y_min - 0.1 * y_range, y_max + 0.05 * y_range)
+
             total_improvement = cumulative_best[-1] - cumulative_best[0]
             ax4.text(0.05, 0.95, f'Total Improvement: {total_improvement:+.2f}\\nIterations: {len(iterations)}',
                     transform=ax4.transAxes, fontsize=11, fontweight='bold',
