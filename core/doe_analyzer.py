@@ -5,11 +5,21 @@ Extracted from doe_analysis_gui.pyw
 import numpy as np
 import pandas as pd
 import statsmodels.formula.api as smf
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
+from core.constants import (
+    SIGNIFICANCE_LEVEL,
+    BACKWARD_ELIMINATION_THRESHOLD,
+    ADJ_R2_WEIGHT,
+    BIC_WEIGHT,
+    COMPLEXITY_PENALTY,
+    R2_LOW_THRESHOLD,
+    R2_EXCELLENT_THRESHOLD,
+    ADJ_R2_SIMILARITY_THRESHOLD
+)
 
 
 class DoEAnalyzer:
-    """Statistical analysis via regression"""
+    """Statistical analysis of Design of Experiments via regression modeling"""
 
     MODEL_TYPES = {
         'mean': 'Mean (intercept only)',
@@ -20,28 +30,59 @@ class DoEAnalyzer:
         'reduced': 'Reduced Quadratic (backward elimination)'
     }
 
-    def __init__(self):
-        self.data = None
+    def __init__(self) -> None:
+        """Initialize analyzer with empty data and model"""
+        self.data: Optional[pd.DataFrame] = None
         self.model = None
-        self.model_type = 'linear'
-        self.factor_columns = []
-        self.categorical_factors = []
-        self.numeric_factors = []
-        self.response_column = None
-        self.results = None
+        self.model_type: str = 'linear'
+        self.factor_columns: List[str] = []
+        self.categorical_factors: List[str] = []
+        self.numeric_factors: List[str] = []
+        self.response_column: Optional[str] = None
+        self.results: Optional[Dict[str, Any]] = None
 
     def set_data(self, data: pd.DataFrame, factor_columns: List[str],
                  categorical_factors: List[str], numeric_factors: List[str],
-                 response_column: str):
-        """Set data and factor information"""
+                 response_column: str) -> None:
+        """
+        Set experimental data and factor configuration
+
+        Args:
+            data: DataFrame containing experimental results
+            factor_columns: List of column names that are experimental factors
+            categorical_factors: Subset of factor_columns that are categorical
+            numeric_factors: Subset of factor_columns that are numeric/continuous
+            response_column: Name of the column containing response variable
+        """
         self.data = data.copy()
         self.factor_columns = factor_columns
         self.categorical_factors = categorical_factors
         self.numeric_factors = numeric_factors
         self.response_column = response_column
 
+    @staticmethod
+    def _build_squared_terms(numeric_factors: List[str]) -> List[str]:
+        """
+        Build squared terms for numeric factors (for quadratic models)
+
+        Args:
+            numeric_factors: List of numeric factor names
+
+        Returns:
+            List of squared term strings (e.g., ["I(Q('pH')**2)", ...])
+        """
+        return [f"I(Q('{factor}')**2)" for factor in numeric_factors]
+
     def _build_interaction_terms(self, factor_terms: List[str]) -> List[str]:
-        """Build interaction terms for all factor combinations"""
+        """
+        Build 2-way interaction terms for all factor combinations
+
+        Args:
+            factor_terms: List of factor term strings (already formatted for statsmodels)
+
+        Returns:
+            List of interaction term strings (e.g., ["factor1:factor2", ...])
+        """
         interactions = []
         for i in range(len(factor_terms)):
             for j in range(i + 1, len(factor_terms)):
@@ -88,9 +129,7 @@ class DoEAnalyzer:
         elif model_type == 'quadratic':
             main_effects = " + ".join(factor_terms)
             interactions = self._build_interaction_terms(factor_terms)
-            squared_terms = []
-            for factor in self.numeric_factors:
-                squared_terms.append(f"I(Q('{factor}')**2)")
+            squared_terms = self._build_squared_terms(self.numeric_factors)
             formula = f"Q('{self.response_column}') ~ {main_effects}"
             if interactions:
                 formula += " + " + " + ".join(interactions)
@@ -99,9 +138,7 @@ class DoEAnalyzer:
 
         elif model_type == 'purequadratic':
             main_effects = " + ".join(factor_terms)
-            squared_terms = []
-            for factor in self.numeric_factors:
-                squared_terms.append(f"I(Q('{factor}')**2)")
+            squared_terms = self._build_squared_terms(self.numeric_factors)
             formula = f"Q('{self.response_column}') ~ {main_effects}"
             if squared_terms:
                 formula += " + " + " + ".join(squared_terms)
@@ -128,14 +165,19 @@ class DoEAnalyzer:
         self.results = self._extract_results()
         return self.results
 
-    def _extract_results(self) -> Dict:
-        """Extract and organize model results"""
+    def _extract_results(self) -> Dict[str, Any]:
+        """
+        Extract and organize regression model results
+
+        Returns:
+            Dictionary containing coefficients, model statistics, predictions, and residuals
+        """
         summary_df = pd.DataFrame({
             'Coefficient': self.model.params,
             'Std Error': self.model.bse,
             't-statistic': self.model.tvalues,
             'p-value': self.model.pvalues,
-            'Significant': self.model.pvalues < 0.05
+            'Significant': self.model.pvalues < SIGNIFICANCE_LEVEL
         })
 
         model_stats = {
@@ -160,8 +202,16 @@ class DoEAnalyzer:
             'residuals': self.model.resid
         }
 
-    def get_significant_factors(self, alpha: float = 0.05) -> List[str]:
-        """Get list of significant factors"""
+    def get_significant_factors(self, alpha: float = SIGNIFICANCE_LEVEL) -> List[str]:
+        """
+        Get list of significant factors based on p-value threshold
+
+        Args:
+            alpha: Significance level threshold (default from constants)
+
+        Returns:
+            List of factor names with p-value < alpha (excluding intercept)
+        """
         if self.results is None:
             raise ValueError("No results available")
 
@@ -203,16 +253,18 @@ class DoEAnalyzer:
 
         return self.model.predict(X)
 
-    def fit_reduced_quadratic(self, p_remove: float = 0.10):
+    def fit_reduced_quadratic(self, p_remove: float = BACKWARD_ELIMINATION_THRESHOLD):
         """
         Fit reduced quadratic model using backward elimination
-        Starts with full quadratic and removes non-significant terms
+
+        Starts with full quadratic model and iteratively removes terms with
+        highest p-value until all remaining terms are significant.
 
         Args:
-            p_remove: P-value threshold for removing terms (default 0.10)
+            p_remove: P-value threshold for removing terms (default from constants)
 
         Returns:
-            Fitted statsmodels regression model
+            Fitted statsmodels OLS regression model
         """
         if self.data is None:
             raise ValueError("No data available")
@@ -278,7 +330,7 @@ class DoEAnalyzer:
         for model_type in model_types:
             try:
                 if model_type == 'reduced':
-                    fitted_model = self.fit_reduced_quadratic(p_remove=0.10)
+                    fitted_model = self.fit_reduced_quadratic(p_remove=BACKWARD_ELIMINATION_THRESHOLD)
                 else:
                     formula = self.build_formula(model_type)
                     fitted_model = smf.ols(formula=formula, data=self.data).fit()
@@ -353,9 +405,9 @@ class DoEAnalyzer:
             else:
                 bic_score = 100
 
-            complexity_penalty = stats['DF Model'] * 2
+            complexity_penalty = stats['DF Model'] * COMPLEXITY_PENALTY
 
-            combined_score = (0.6 * adj_r2_score + 0.3 * bic_score - complexity_penalty)
+            combined_score = (ADJ_R2_WEIGHT * adj_r2_score + BIC_WEIGHT * bic_score - complexity_penalty)
 
             scores[model_type] = {
                 'adj_r2_score': adj_r2_score,
@@ -376,9 +428,9 @@ class DoEAnalyzer:
         reason_parts.append(f"BIC = {best_score['bic']:.1f}")
         reason_parts.append(f"RMSE = {best_score['rmse']:.4f}")
 
-        if best_score['adj_r2'] < 0.5:
+        if best_score['adj_r2'] < R2_LOW_THRESHOLD:
             reason_parts.append("(Warning: Low R² - model may not fit data well)")
-        elif best_score['adj_r2'] > 0.9:
+        elif best_score['adj_r2'] > R2_EXCELLENT_THRESHOLD:
             reason_parts.append("(Excellent fit)")
 
         model_order = ['mean', 'linear', 'interactions', 'quadratic', 'purequadratic', 'reduced']
@@ -390,7 +442,7 @@ class DoEAnalyzer:
                 simpler_score = scores[simpler_model]
                 adj_r2_diff = best_score['adj_r2'] - simpler_score['adj_r2']
 
-                if adj_r2_diff < 0.05:
+                if adj_r2_diff < ADJ_R2_SIMILARITY_THRESHOLD:
                     reason_parts.append(f"(Consider {simpler_model} for parsimony)")
                     break
 
