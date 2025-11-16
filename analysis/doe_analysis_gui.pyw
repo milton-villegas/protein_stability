@@ -882,11 +882,9 @@ class BayesianOptimizer:
             # Debug: Check what we have
             print(f"  [Debug] Adapter type: {type(adapter).__name__}")
 
-            # Check common model attribute names in TorchAdapter
-            print(f"  [Debug] Has 'model': {hasattr(adapter, 'model')}")
-            print(f"  [Debug] Has '_model': {hasattr(adapter, '_model')}")
-            print(f"  [Debug] Has 'botorch_model': {hasattr(adapter, 'botorch_model')}")
-            print(f"  [Debug] Has 'surrogate': {hasattr(adapter, 'surrogate')}")
+            # List all public attributes to find where model is stored
+            public_attrs = [a for a in dir(adapter) if not a.startswith('_') and not callable(getattr(adapter, a, None))]
+            print(f"  [Debug] Public non-method attributes: {public_attrs}")
 
             # Try multiple paths to find the GP model's covariance module
             covar = None
