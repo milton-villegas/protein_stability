@@ -361,6 +361,164 @@ class DoEAnalyzer:
         
         return main_effects
 
+    def compare_all_models(self):
+        """
+        Fit all 4 model types and return comparison statistics.
+
+        Returns:
+            dict: Comparison data with keys:
+                - 'models': dict mapping model_type -> stats dict
+                - 'comparison_table': DataFrame with all models side-by-side
+                - 'fitted_models': dict mapping model_type -> fitted model object
+        """
+        if self.data is None:
+            raise ValueError("No data available")
+
+        model_types = ['linear', 'interactions', 'purequadratic', 'quadratic']
+        comparison_data = {
+            'models': {},
+            'fitted_models': {},
+            'errors': {}
+        }
+
+        # Fit each model type and collect statistics
+        for model_type in model_types:
+            try:
+                formula = self.build_formula(model_type)
+                fitted_model = smf.ols(formula=formula, data=self.data).fit()
+
+                # Extract key statistics
+                stats = {
+                    'Model Type': self.MODEL_TYPES[model_type],
+                    'R²': fitted_model.rsquared,
+                    'Adj R²': fitted_model.rsquared_adj,
+                    'RMSE': np.sqrt(fitted_model.mse_resid),
+                    'AIC': fitted_model.aic,
+                    'BIC': fitted_model.bic,
+                    'DF Model': int(fitted_model.df_model),
+                    'DF Resid': int(fitted_model.df_resid),
+                    'F-statistic': fitted_model.fvalue,
+                    'F p-value': fitted_model.f_pvalue
+                }
+
+                comparison_data['models'][model_type] = stats
+                comparison_data['fitted_models'][model_type] = fitted_model
+
+            except Exception as e:
+                # Store error if model fails (e.g., not enough data for quadratic)
+                comparison_data['errors'][model_type] = str(e)
+
+        # Create comparison table DataFrame
+        if comparison_data['models']:
+            comparison_df = pd.DataFrame(comparison_data['models']).T
+            comparison_data['comparison_table'] = comparison_df
+        else:
+            comparison_data['comparison_table'] = None
+
+        return comparison_data
+
+    def select_best_model(self, comparison_data):
+        """
+        Analyze model comparison and recommend the best model.
+
+        Uses these criteria in priority order:
+        1. Adjusted R² (higher is better) - penalizes overfitting
+        2. BIC (lower is better) - penalizes complexity more than AIC
+        3. Model parsimony (prefer simpler if similar performance)
+
+        Args:
+            comparison_data: Output from compare_all_models()
+
+        Returns:
+            dict: {
+                'recommended_model': str (model type),
+                'reason': str (explanation),
+                'scores': dict (ranking scores for each model)
+            }
+        """
+        models = comparison_data['models']
+
+        if not models:
+            return {
+                'recommended_model': None,
+                'reason': "No models successfully fitted",
+                'scores': {}
+            }
+
+        # Calculate scores for each criterion
+        scores = {}
+
+        for model_type in models.keys():
+            stats = models[model_type]
+
+            # Score based on Adj R² (0-100, higher is better)
+            adj_r2_score = stats['Adj R²'] * 100
+
+            # Score based on BIC (normalize - lower BIC is better)
+            # Convert to 0-100 scale where lower BIC = higher score
+            bic_values = [m['BIC'] for m in models.values()]
+            min_bic = min(bic_values)
+            max_bic = max(bic_values)
+            if max_bic > min_bic:
+                bic_score = 100 * (1 - (stats['BIC'] - min_bic) / (max_bic - min_bic))
+            else:
+                bic_score = 100
+
+            # Parsimony penalty: prefer simpler models if performance is close
+            complexity_penalty = stats['DF Model'] * 2  # Penalize each parameter
+
+            # Combined score: 60% Adj R², 30% BIC, -10% complexity penalty
+            combined_score = (0.6 * adj_r2_score + 0.3 * bic_score - complexity_penalty)
+
+            scores[model_type] = {
+                'adj_r2_score': adj_r2_score,
+                'bic_score': bic_score,
+                'complexity_penalty': complexity_penalty,
+                'combined_score': combined_score,
+                'adj_r2': stats['Adj R²'],
+                'bic': stats['BIC'],
+                'rmse': stats['RMSE']
+            }
+
+        # Select model with highest combined score
+        best_model = max(scores.keys(), key=lambda k: scores[k]['combined_score'])
+        best_stats = models[best_model]
+        best_score = scores[best_model]
+
+        # Generate explanation
+        reason_parts = []
+        reason_parts.append(f"Best Adj R² = {best_score['adj_r2']:.4f}")
+        reason_parts.append(f"BIC = {best_score['bic']:.1f}")
+        reason_parts.append(f"RMSE = {best_score['rmse']:.4f}")
+
+        # Add interpretation
+        if best_score['adj_r2'] < 0.5:
+            reason_parts.append("(Warning: Low R² - model may not fit data well)")
+        elif best_score['adj_r2'] > 0.9:
+            reason_parts.append("(Excellent fit)")
+
+        # Check if it's significantly better than simpler models
+        model_order = ['linear', 'interactions', 'purequadratic', 'quadratic']
+        best_idx = model_order.index(best_model) if best_model in model_order else -1
+
+        for i in range(best_idx):
+            simpler_model = model_order[i]
+            if simpler_model in scores:
+                simpler_score = scores[simpler_model]
+                adj_r2_diff = best_score['adj_r2'] - simpler_score['adj_r2']
+
+                # If improvement is marginal (<0.05), mention parsimony
+                if adj_r2_diff < 0.05:
+                    reason_parts.append(f"(Only {adj_r2_diff:.3f} better than {simpler_model})")
+
+        reason = "; ".join(reason_parts)
+
+        return {
+            'recommended_model': best_model,
+            'reason': reason,
+            'scores': scores
+        }
+
 
 # Plotter class for visualizations
 
@@ -1951,15 +2109,14 @@ class AnalysisTab(ttk.Frame):
         config_frame = ttk.LabelFrame(self, text="2. Configure Analysis", padding=10)
         config_frame.pack(fill='x', padx=10, pady=5)
         
-        # Model Type row with info button
-        ttk.Label(config_frame, text="Model Type:").grid(row=0, column=0, sticky='w', padx=5, pady=5)
-        
-        self.model_type_var = tk.StringVar(value='linear')
-        model_combo = ttk.Combobox(config_frame, textvariable=self.model_type_var,
-                                   values=['linear', 'interactions', 'purequadratic', 'quadratic'],
-                                   state='readonly', width=25)
-        model_combo.grid(row=0, column=1, sticky='w', padx=5, pady=5)
-        
+        # Model Type row with info button - AUTO SELECTION
+        ttk.Label(config_frame, text="Model Selection:").grid(row=0, column=0, sticky='w', padx=5, pady=5)
+
+        # Label indicating automatic selection
+        auto_label = ttk.Label(config_frame, text="✓ Automatic (compares all 4 models)",
+                              foreground='#029E73', font=('TkDefaultFont', 9, 'bold'))
+        auto_label.grid(row=0, column=1, sticky='w', padx=5, pady=5)
+
         # info button
         info_btn = ttk.Button(config_frame, text="?", width=2, command=self.show_model_guide)
         info_btn.grid(row=0, column=2, sticky='w', padx=(2, 0), pady=5)
@@ -2290,11 +2447,11 @@ class AnalysisTab(ttk.Frame):
         try:
             # Always use "Response" column in the xlxs file
             response_col = "Response"
-            model_type = self.model_type_var.get()
+
             # Detect which columns are factors vs response
             self.handler.detect_columns(response_col)
             clean_data = self.handler.preprocess_data()
-            
+
             # Pass cleaned data to analyzer
             self.analyzer.set_data(
                 data=clean_data,
@@ -2303,30 +2460,50 @@ class AnalysisTab(ttk.Frame):
                 numeric_factors=self.handler.numeric_factors,
                 response_column=self.handler.response_column
             )
-            
-            # Fit regression model then calculations are made
-            self.results = self.analyzer.fit_model(model_type)
+
+            # AUTOMATIC MODEL SELECTION - Compare all 4 models
+            self.status_var.set("Comparing all models...")
+            self.update()
+
+            self.model_comparison = self.analyzer.compare_all_models()
+            self.model_selection = self.analyzer.select_best_model(self.model_comparison)
+
+            # Use the recommended model for detailed analysis
+            recommended_model = self.model_selection['recommended_model']
+
+            if recommended_model is None:
+                raise ValueError("No models could be fitted successfully. Check your data.")
+
+            self.status_var.set(f"Using recommended model: {recommended_model}...")
+            self.update()
+
+            # Fit the recommended model for detailed analysis
+            self.results = self.analyzer.fit_model(recommended_model)
             self.main_effects = self.analyzer.calculate_main_effects()
-            
+
             self.display_statistics()
             self.display_plots()
             self.display_recommendations()
-            
+
             # Display optimization plot if available
             if AX_AVAILABLE and self.optimizer:
                 self.display_optimization_plot()
-            
+
             self.export_stats_btn.config(state='normal')
             self.export_plots_btn.config(state='normal')
-            
-            self.status_var.set(f"Analysis complete! R² = {self.results['model_stats']['R-squared']:.4f}")
-            
-            messagebox.showinfo("Success", 
+
+            # Show completion status with recommended model
+            recommended_model_name = self.analyzer.MODEL_TYPES[recommended_model]
+            self.status_var.set(f"Analysis complete! Model: {recommended_model_name} | R² = {self.results['model_stats']['R-squared']:.4f}")
+
+            messagebox.showinfo("Success",
                               f"Analysis completed successfully!\n\n"
-                              f"Model: {model_type}\n"
+                              f"Recommended Model: {recommended_model_name}\n"
                               f"Observations: {self.results['model_stats']['Observations']}\n"
-                              f"R-squared: {self.results['model_stats']['R-squared']:.4f}")
-            
+                              f"R-squared: {self.results['model_stats']['R-squared']:.4f}\n"
+                              f"Adjusted R-squared: {self.results['model_stats']['Adjusted R-squared']:.4f}\n\n"
+                              f"All 4 models were compared. See Statistics tab for details.")
+
         except Exception as e:
             messagebox.showerror("Error", f"Analysis failed:\n{str(e)}")
             self.status_var.set("Analysis failed")
@@ -2336,11 +2513,70 @@ class AnalysisTab(ttk.Frame):
     def display_statistics(self):
         """Display statistical results with recommendations and warnings"""
         self.stats_text.delete('1.0', tk.END)
-        
+
         self.stats_text.insert(tk.END, "="*80 + "\n")
         self.stats_text.insert(tk.END, "DOE ANALYSIS RESULTS\n")
         self.stats_text.insert(tk.END, "="*80 + "\n\n")
-        
+
+        # MODEL COMPARISON SECTION - Show all models and recommendation
+        if hasattr(self, 'model_comparison') and self.model_comparison:
+            self.stats_text.insert(tk.END, "📊 AUTOMATIC MODEL SELECTION\n")
+            self.stats_text.insert(tk.END, "-"*80 + "\n\n")
+
+            # Display comparison table
+            comparison_table = self.model_comparison['comparison_table']
+
+            if comparison_table is not None and not comparison_table.empty:
+                # Format the comparison table for display
+                self.stats_text.insert(tk.END, "Model Comparison (all 4 models fitted):\n\n")
+
+                # Create formatted header
+                header = f"{'Model':<30} {'Adj R²':>10} {'BIC':>10} {'RMSE':>10} {'DF':>6}  {'Recommend':>10}\n"
+                self.stats_text.insert(tk.END, header)
+                self.stats_text.insert(tk.END, "-"*80 + "\n")
+
+                # Get recommendation
+                recommendation = self.model_selection
+                recommended_model = recommendation['recommended_model']
+
+                # Display each model
+                model_order = ['linear', 'interactions', 'purequadratic', 'quadratic']
+                for model_type in model_order:
+                    if model_type in self.model_comparison['models']:
+                        stats = self.model_comparison['models'][model_type]
+                        model_name = stats['Model Type']
+
+                        # Mark recommended model with checkmark
+                        if model_type == recommended_model:
+                            marker = "✓ BEST"
+                        else:
+                            marker = ""
+
+                        line = (f"{model_name:<30} "
+                               f"{stats['Adj R²']:>10.4f} "
+                               f"{stats['BIC']:>10.1f} "
+                               f"{stats['RMSE']:>10.4f} "
+                               f"{stats['DF Model']:>6} "
+                               f"{marker:>10}\n")
+                        self.stats_text.insert(tk.END, line)
+                    elif model_type in self.model_comparison['errors']:
+                        # Show error for models that failed to fit
+                        error_msg = self.model_comparison['errors'][model_type]
+                        model_name = self.analyzer.MODEL_TYPES.get(model_type, model_type)
+                        self.stats_text.insert(tk.END,
+                                             f"{model_name:<30} (Failed: {error_msg[:40]}...)\n")
+
+                # Show recommendation explanation
+                self.stats_text.insert(tk.END, "\n" + "-"*80 + "\n")
+                self.stats_text.insert(tk.END, f"🎯 RECOMMENDED: {self.analyzer.MODEL_TYPES[recommended_model]}\n")
+                self.stats_text.insert(tk.END, f"   Reason: {recommendation['reason']}\n")
+
+                # Show note about model selection criteria
+                self.stats_text.insert(tk.END, "\n💡 Selection criteria: Adjusted R² (60%), BIC (30%), Parsimony (10%)\n")
+                self.stats_text.insert(tk.END, "   Higher Adj R² is better | Lower BIC is better | Simpler models preferred\n")
+
+            self.stats_text.insert(tk.END, "\n" + "="*80 + "\n\n")
+
         # RED FLAGS SECTION - Show warnings first if model quality is poor
         r_squared = self.results['model_stats']['R-squared']
         n_obs = self.results['model_stats']['Observations']
