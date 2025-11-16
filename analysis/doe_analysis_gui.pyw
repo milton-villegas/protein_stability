@@ -1084,12 +1084,15 @@ class BayesianOptimizer:
             ax3 = fig.add_subplot(gs[1, 0])
             cv_success = False
             try:
-                # Try to import and run cross-validation
+                # Try to import cross_validate from different locations (Ax version compatibility)
                 try:
-                    from ax.modelbridge.cross_validation import cross_validate
+                    from ax.adapter.cross_validation import cross_validate
                 except ImportError:
-                    # Try alternative import for older Ax versions
-                    from ax.modelbridge import cross_validate
+                    try:
+                        from ax.modelbridge.cross_validation import cross_validate
+                    except ImportError:
+                        # Try alternative import for older Ax versions
+                        from ax.modelbridge import cross_validate
 
                 # Get model for CV
                 model = self.ax_client.generation_strategy.model
@@ -1320,11 +1323,14 @@ class BayesianOptimizer:
             # EXPORT 3: Cross-Validation
             fig3, ax3 = plt.subplots(1, 1, figsize=(9, 7))
             try:
-                # Try to import cross_validate
+                # Try to import cross_validate from different locations (Ax version compatibility)
                 try:
-                    from ax.modelbridge.cross_validation import cross_validate
+                    from ax.adapter.cross_validation import cross_validate
                 except ImportError:
-                    from ax.modelbridge import cross_validate
+                    try:
+                        from ax.modelbridge.cross_validation import cross_validate
+                    except ImportError:
+                        from ax.modelbridge import cross_validate
 
                 model = self.ax_client.generation_strategy.model
                 cv_results = cross_validate(model)
