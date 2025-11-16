@@ -2704,22 +2704,17 @@ class AnalysisTab(ttk.Frame):
     def export_statistics(self):
         """Export statistics to Excel"""
         date_str = datetime.now().strftime('%Y%m%d')
-        suggested_name = f"Experiment_Statistics_{date_str}.xlsx"
 
         filepath = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
             filetypes=[("Excel files", "*.xlsx")],
-            initialfile=suggested_name
+            initialfile="Experiment.xlsx"
         )
 
         if filepath:
             try:
                 # Generate path with naming convention: [UserName]_Statistics_[Date]
                 base_path = os.path.splitext(filepath)[0]
-
-                # Remove existing suffix if user kept suggested name
-                if base_path.endswith(f"_Statistics_{date_str}"):
-                    base_path = base_path[:-len(f"_Statistics_{date_str}")]
 
                 # Add standardized suffix
                 final_path = f"{base_path}_Statistics_{date_str}.xlsx"
@@ -2824,7 +2819,7 @@ class AnalysisTab(ttk.Frame):
         """Ask user for plot export format"""
         dialog = tk.Toplevel(self)
         dialog.title("Select Plot Format")
-        dialog.geometry("400x300")
+        dialog.geometry("500x400")
         dialog.transient(self)
         dialog.grab_set()
 
@@ -2902,7 +2897,7 @@ class AnalysisTab(ttk.Frame):
         base_name = filedialog.asksaveasfilename(
             defaultextension=f".{file_format}",
             filetypes=[format_map[file_format], ("All files", "*.*")],
-            initialfile=f"Experiment_MainEffects_{date_str}.{file_format}",
+            initialfile=f"Experiment.{file_format}",
             title="Choose base name for plots (will create multiple files)"
         )
 
@@ -2912,10 +2907,6 @@ class AnalysisTab(ttk.Frame):
         # Extract directory and base name without extension
         directory = os.path.dirname(base_name)
         base_path = os.path.splitext(os.path.basename(base_name))[0]
-
-        # Remove existing suffix if user kept suggested name
-        if base_path.endswith(f"_MainEffects_{date_str}"):
-            base_path = base_path[:-len(f"_MainEffects_{date_str}")]
 
         try:
             # Export main effects plot
@@ -3088,7 +3079,7 @@ class AnalysisTab(ttk.Frame):
         base_name = filedialog.asksaveasfilename(
             defaultextension=f".{file_format}",
             filetypes=[format_map[file_format], ("All files", "*.*")],
-            initialfile=f"Experiment_BO_ResponseSurface_{date_str}.{file_format}",
+            initialfile=f"Experiment.{file_format}",
             title="Choose base name for BO plots (will create multiple files)"
         )
 
@@ -3098,10 +3089,6 @@ class AnalysisTab(ttk.Frame):
         # Extract directory and base name
         directory = os.path.dirname(base_name)
         base_path = os.path.splitext(os.path.basename(base_name))[0]
-
-        # Remove existing suffix if user kept suggested name
-        if base_path.endswith(f"_BO_ResponseSurface_{date_str}"):
-            base_path = base_path[:-len(f"_BO_ResponseSurface_{date_str}")]
 
         try:
             exported_files = self.optimizer.export_bo_plots(directory, base_path, date_str, file_format, dpi)

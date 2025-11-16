@@ -2092,13 +2092,12 @@ class DesignerTab(ttk.Frame):
             
             # Single-step file save dialog with suggested name
             date_str = datetime.now().strftime('%Y%m%d')
-            suggested_name = f"Experiment_Design_{date_str}.xlsx"
 
             path = filedialog.asksaveasfilename(
                 defaultextension=".xlsx",
                 filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
                 title="Save Factorial Design",
-                initialfile=suggested_name
+                initialfile="Experiment.xlsx"
             )
 
             if not path:
@@ -2106,10 +2105,6 @@ class DesignerTab(ttk.Frame):
 
             # Generate paths with naming convention: [UserName]_Design_[Date]
             base_path = os.path.splitext(path)[0]
-
-            # Remove existing _Design_YYYYMMDD suffix if user kept the suggested name
-            if base_path.endswith(f"_Design_{date_str}"):
-                base_path = base_path[:-len(f"_Design_{date_str}")]
 
             # Add standardized suffix
             xlsx_path = f"{base_path}_Design_{date_str}.xlsx"
