@@ -931,17 +931,13 @@ class BayesianOptimizer:
 
             # Extract Sobol indices from the analysis card
             # The blob is a JSON string containing the plotly figure
-            print(f"  [Debug] Card is None: {card is None}")
             if card is not None:
                 import json
                 import plotly.graph_objects as go
 
-                print(f"  [Debug] Parsing JSON blob...")
                 # Parse the JSON blob to get the plotly figure data
                 blob_json = json.loads(card.blob)
                 fig = go.Figure(blob_json)
-                print(f"  [Debug] Figure created, has data: {hasattr(fig, 'data')}")
-                print(f"  [Debug] Number of traces: {len(fig.data) if hasattr(fig, 'data') else 0}")
 
                 # Parse Sobol indices from the plotly figure data
                 # The data structure contains parameter names and their total Sobol indices
@@ -949,40 +945,47 @@ class BayesianOptimizer:
 
                 if hasattr(fig, 'data') and len(fig.data) > 0:
                     # Extract from plotly bar chart data
+                    # Note: In plotly's encoding, parameter names are in y and values are in x (as binary data)
                     for idx, trace in enumerate(fig.data):
-                        print(f"  [Debug] Trace {idx}: has x={hasattr(trace, 'x')}, has y={hasattr(trace, 'y')}")
                         if hasattr(trace, 'x') and hasattr(trace, 'y'):
-                            param_names = trace.x
-                            sobol_values = trace.y
-                            print(f"  [Debug] Param names: {param_names}")
-                            print(f"  [Debug] Sobol values: {sobol_values}")
-                            print(f"  [Debug] Numeric factors: {self.numeric_factors}")
+                            # Extract parameter names (in trace.y) and Sobol values (in trace.x as binary)
+                            param_names = trace.y  # Parameter names are in y
+                            sobol_data = trace.x   # Sobol values are in x (binary encoded)
 
-                            for param_name, sobol_val in zip(param_names, sobol_values):
-                                # Map sanitized parameter names back to original factor names
-                                for orig_factor in self.numeric_factors:
-                                    sanitized = self.reverse_mapping.get(orig_factor, orig_factor)
-                                    if sanitized == param_name:
-                                        print(f"  [Debug] Matched {param_name} -> {orig_factor} = {sobol_val}")
-                                        sensitivities[orig_factor] = float(sobol_val)
-                                        break
-                                else:
-                                    print(f"  [Debug] No match for param: {param_name}")
+                            # Decode binary-encoded Sobol values
+                            if isinstance(param_names, (list, tuple)) and isinstance(sobol_data, dict):
+                                import base64
+                                import numpy as np
+
+                                # Decode base64 binary data
+                                binary_data = base64.b64decode(sobol_data['bdata'])
+                                dtype = sobol_data.get('dtype', 'f8')
+                                sobol_values = np.frombuffer(binary_data, dtype=dtype)
+
+                                print(f"  Decoded {len(sobol_values)} Sobol indices from analysis")
+
+                                # Map parameter names to Sobol values
+                                for param_name, sobol_val in zip(param_names, sobol_values):
+                                    # Map sanitized parameter names back to original factor names
+                                    for orig_factor in self.numeric_factors:
+                                        sanitized = self.reverse_mapping.get(orig_factor, orig_factor)
+                                        if sanitized == param_name:
+                                            sensitivities[orig_factor] = float(sobol_val)
+                                            break
                 else:
-                    print(f"  [Debug] Figure has no data traces")
-
-                print(f"  [Debug] Final sensitivities: {sensitivities}")
-                print(f"  [Debug] Number of sensitivities: {len(sensitivities)}")
+                    print(f"  No Sobol data found in analysis")
 
                 if len(sensitivities) >= 2:
-                    print(f"✓ Using Sobol sensitivity indices")
+                    print(f"✓ Using Sobol sensitivity indices for factor selection")
                     print(f"  Sobol indices: {sensitivities}")
 
                     sorted_factors = sorted(sensitivities.items(), key=lambda x: x[1], reverse=True)
                     selected = [f[0] for f in sorted_factors[:2]]
 
-                    print(f"  Selected factors based on Sobol indices: {selected}")
+                    print(f"  Selected most important factors: {selected}")
                     return selected
+                else:
+                    print(f"  Could not extract enough Sobol indices (got {len(sensitivities)})")
 
         except ImportError:
             print(f"  Sobol analysis not available (Ax version may not support it)")
