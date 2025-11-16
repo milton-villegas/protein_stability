@@ -930,28 +930,25 @@ class BayesianOptimizer:
             )
 
             # Extract Sobol indices from the analysis card
-            # The card contains plotly data with sensitivity values
-            print(f"  [Debug] Card is None: {card is None}")
+            # The blob is a JSON string containing the plotly figure
             if card is not None:
-                print(f"  [Debug] Card type: {type(card)}")
-                card_data = card.blob
-                print(f"  [Debug] Blob type: {type(card_data)}")
-                print(f"  [Debug] Has 'data' attr: {hasattr(card_data, 'data')}")
+                import json
+                import plotly.graph_objects as go
+
+                # Parse the JSON blob to get the plotly figure data
+                blob_json = json.loads(card.blob)
+                fig = go.Figure(blob_json)
 
                 # Parse Sobol indices from the plotly figure data
                 # The data structure contains parameter names and their total Sobol indices
                 sensitivities = {}
 
-                if hasattr(card_data, 'data') and len(card_data.data) > 0:
-                    print(f"  [Debug] Number of traces: {len(card_data.data)}")
+                if hasattr(fig, 'data') and len(fig.data) > 0:
                     # Extract from plotly bar chart data
-                    for trace in card_data.data:
-                        print(f"  [Debug] Trace has 'x': {hasattr(trace, 'x')}, has 'y': {hasattr(trace, 'y')}")
+                    for trace in fig.data:
                         if hasattr(trace, 'x') and hasattr(trace, 'y'):
                             param_names = trace.x
                             sobol_values = trace.y
-                            print(f"  [Debug] Param names: {param_names}")
-                            print(f"  [Debug] Sobol values: {sobol_values}")
 
                             for param_name, sobol_val in zip(param_names, sobol_values):
                                 # Map sanitized parameter names back to original factor names
