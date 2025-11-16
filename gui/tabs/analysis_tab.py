@@ -1103,7 +1103,7 @@ class BayesianOptimizer:
                                                        X, Y)
 
             # CREATE 2x2 MULTI-PANEL FIGURE (GUI PREVIEW)
-            fig = plt.figure(figsize=(14, 10))
+            fig = plt.figure(figsize=(10, 7))
             gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.3)
 
             # PANEL 1: Response Surface (Top-Left)
