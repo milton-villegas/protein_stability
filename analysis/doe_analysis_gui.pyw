@@ -879,18 +879,33 @@ class BayesianOptimizer:
 
             lengthscales = {}
 
+            # Debug: Check what we have
+            print(f"  [Debug] Adapter type: {type(adapter).__name__}")
+            adapter_attrs = [a for a in dir(adapter) if not a.startswith('_')]
+            print(f"  [Debug] Adapter has 'model': {hasattr(adapter, 'model')}")
+
             # Try multiple paths to find the GP model's covariance module
             covar = None
+            model = None
+
+            # First, try to get the model
+            if hasattr(adapter, 'model'):
+                model = adapter.model
+                print(f"  [Debug] Model type: {type(model).__name__}")
+                print(f"  [Debug] Model has 'covar_module': {hasattr(model, 'covar_module')}")
 
             # Path 1: adapter.model.covar_module (Ax 1.1.2+)
-            if hasattr(adapter, 'model') and hasattr(adapter.model, 'covar_module'):
-                covar = adapter.model.covar_module
+            if model is not None and hasattr(model, 'covar_module'):
+                covar = model.covar_module
+                print(f"  [Debug] Found covar via adapter.model.covar_module")
             # Path 2: adapter.adapter.covar_module (older structure)
             elif hasattr(adapter, 'adapter') and hasattr(adapter.adapter, 'covar_module'):
                 covar = adapter.adapter.covar_module
+                print(f"  [Debug] Found covar via adapter.adapter.covar_module")
             # Path 3: Direct model access
             elif hasattr(adapter, 'covar_module'):
                 covar = adapter.covar_module
+                print(f"  [Debug] Found covar via adapter.covar_module")
 
             if covar is not None:
                 # Get base kernel (may be wrapped in ScaleKernel)
