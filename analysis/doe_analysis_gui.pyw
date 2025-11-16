@@ -1080,82 +1080,46 @@ class BayesianOptimizer:
             ax2.grid(True, alpha=0.15, linestyle='-', linewidth=0.5)
             ax2.set_facecolor('#FAFAFA')
 
-            # PANEL 3: Cross-Validation (Bottom-Left)
+            # PANEL 3: GP Uncertainty Map (Bottom-Left)
             ax3 = fig.add_subplot(gs[1, 0])
-            cv_success = False
-            try:
-                # Try to import cross_validate from different locations (Ax version compatibility)
-                try:
-                    from ax.adapter.cross_validation import cross_validate
-                except ImportError:
-                    try:
-                        from ax.modelbridge.cross_validation import cross_validate
-                    except ImportError:
-                        # Try alternative import for older Ax versions
-                        from ax.modelbridge import cross_validate
 
-                # Get adapter for CV
-                adapter = self.ax_client.generation_strategy.adapter
+            # Plot uncertainty (standard error) as contour map
+            # Z_sem was computed earlier - it shows where the model is uncertain
+            contour3 = ax3.contourf(X, Y, Z_sem, levels=15, cmap='YlOrRd', alpha=0.9)
 
-                # Check if adapter supports cross-validation
-                # RandomAdapter (Sobol) doesn't support CV, only BoTorch does
-                if adapter.__class__.__name__ == 'RandomAdapter':
-                    raise ValueError("Need more data for BoTorch model")
+            # Add contour lines for clarity
+            contour_lines3 = ax3.contour(X, Y, Z_sem, levels=8, colors='black',
+                                         linewidths=0.5, alpha=0.3)
+            ax3.clabel(contour_lines3, inline=True, fontsize=7, fmt='%.2f')
 
-                cv_results = cross_validate(adapter)
+            # Mark observed points
+            ax3.scatter(factor1_values, factor2_values, c='black', s=80,
+                       marker='o', edgecolors='white', linewidth=2,
+                       label='Observed Points', zorder=5)
 
-                # Extract predictions vs observed
-                # In Ax 1.1.2+, cross_validate returns a list[CVResult]
-                # CVResult.observed and CVResult.predicted are Observation objects
-                # Observation.data is ObservationData which has metric_values
-                observed = []
-                predicted = []
-                for cv_pred in cv_results:
-                    # Access metric values from Observation.data
-                    obs_val = cv_pred.observed.data.metric_values[self.response_column]
-                    pred_val = cv_pred.predicted.data.metric_values[self.response_column]
-                    observed.append(obs_val)
-                    predicted.append(pred_val)
+            # Mark the best point
+            best_idx = np.argmax(response_values)
+            ax3.scatter([factor1_values[best_idx]], [factor2_values[best_idx]],
+                       c='lime', s=200, marker='*', edgecolors='black',
+                       linewidth=2, label='Best Point', zorder=6)
 
-                observed = np.array(observed)
-                predicted = np.array(predicted)
+            # Add colorbar
+            cbar3 = plt.colorbar(contour3, ax=ax3, orientation='vertical', pad=0.02, shrink=0.9)
+            cbar3.set_label('GP Std. Error', fontsize=9, fontweight='bold')
+            cbar3.ax.tick_params(labelsize=8)
 
-                # Plot
-                ax3.scatter(observed, predicted, c='#0173B2', s=60, alpha=0.7,
-                           edgecolors='white', linewidth=1.5)
+            # Calculate uncertainty statistics
+            mean_uncertainty = np.mean(Z_sem)
+            max_uncertainty = np.max(Z_sem)
+            ax3.text(0.05, 0.95, f'Mean: {mean_uncertainty:.3f}\nMax: {max_uncertainty:.3f}',
+                    transform=ax3.transAxes, fontsize=9, fontweight='bold',
+                    verticalalignment='top', bbox=dict(boxstyle='round',
+                    facecolor='white', alpha=0.8, edgecolor='#CCCCCC'))
 
-                # Perfect prediction line
-                min_val = min(observed.min(), predicted.min())
-                max_val = max(observed.max(), predicted.max())
-                ax3.plot([min_val, max_val], [min_val, max_val], 'k--', linewidth=2,
-                        label='Perfect Prediction', alpha=0.5)
-
-                # Calculate R²
-                correlation = np.corrcoef(observed, predicted)[0, 1]
-                r_squared = correlation ** 2
-
-                ax3.text(0.05, 0.95, f'R² = {r_squared:.3f}',
-                        transform=ax3.transAxes, fontsize=10, fontweight='bold',
-                        verticalalignment='top', bbox=dict(boxstyle='round',
-                        facecolor='white', alpha=0.8, edgecolor='#CCCCCC'))
-
-                cv_success = True
-
-            except ImportError as e:
-                # CV module not available
-                ax3.text(0.5, 0.5, f'Cross-Validation\nRequires Ax >= 0.2.0\n\nInstall: pip install --upgrade ax-platform',
-                        ha='center', va='center', fontsize=9,
-                        transform=ax3.transAxes, style='italic', color='gray')
-            except Exception as e:
-                # Other CV errors
-                ax3.text(0.5, 0.5, f'Cross-Validation\nNot Available\n\n{str(e)[:50]}',
-                        ha='center', va='center', fontsize=9,
-                        transform=ax3.transAxes, style='italic', color='gray')
-
-            ax3.set_xlabel(f'Observed {self.response_column}', fontsize=10, fontweight='bold')
-            ax3.set_ylabel(f'Predicted {self.response_column}', fontsize=10, fontweight='bold')
-            ax3.set_title('Model Quality (Cross-Validation)', fontsize=11, fontweight='bold', pad=10)
-            ax3.legend(fontsize=8, framealpha=0.9, edgecolor='#CCCCCC')
+            ax3.set_xlabel(factor1_label, fontsize=10, fontweight='bold')
+            ax3.set_ylabel(factor2_label, fontsize=10, fontweight='bold')
+            ax3.set_title('Model Uncertainty (GP Std. Error)', fontsize=11, fontweight='bold', pad=10)
+            ax3.legend(fontsize=8, framealpha=0.9, edgecolor='#CCCCCC', loc='lower right')
             ax3.grid(True, alpha=0.15, linestyle='-', linewidth=0.5)
             ax3.set_facecolor('#FAFAFA')
 
@@ -1330,65 +1294,51 @@ class BayesianOptimizer:
             plt.close(fig2)
             exported_files.append(filepath2)
 
-            # EXPORT 3: Cross-Validation
+            # EXPORT 3: GP Uncertainty Map
             fig3, ax3 = plt.subplots(1, 1, figsize=(9, 7))
-            try:
-                # Try to import cross_validate from different locations (Ax version compatibility)
-                try:
-                    from ax.adapter.cross_validation import cross_validate
-                except ImportError:
-                    try:
-                        from ax.modelbridge.cross_validation import cross_validate
-                    except ImportError:
-                        from ax.modelbridge import cross_validate
 
-                adapter = self.ax_client.generation_strategy.adapter
+            # Plot uncertainty (standard error) as contour map
+            contour3 = ax3.contourf(X, Y, Z_sem, levels=15, cmap='YlOrRd', alpha=0.9)
 
-                # Check if adapter supports cross-validation
-                if adapter.__class__.__name__ == 'RandomAdapter':
-                    raise ValueError("Need more data for BoTorch model")
+            # Add contour lines for clarity
+            contour_lines3 = ax3.contour(X, Y, Z_sem, levels=10, colors='black',
+                                         linewidths=0.8, alpha=0.4)
+            ax3.clabel(contour_lines3, inline=True, fontsize=9, fmt='%.2f')
 
-                cv_results = cross_validate(adapter)
-                observed = []
-                predicted = []
-                # In Ax 1.1.2+, cross_validate returns a list[CVResult]
-                # CVResult.observed/predicted are Observation objects with .data attribute
-                for cv_pred in cv_results:
-                    obs_val = cv_pred.observed.data.metric_values[self.response_column]
-                    pred_val = cv_pred.predicted.data.metric_values[self.response_column]
-                    observed.append(obs_val)
-                    predicted.append(pred_val)
-                observed = np.array(observed)
-                predicted = np.array(predicted)
-                ax3.scatter(observed, predicted, c='#0173B2', s=100, alpha=0.7,
-                           edgecolors='white', linewidth=2)
-                min_val = min(observed.min(), predicted.min())
-                max_val = max(observed.max(), predicted.max())
-                ax3.plot([min_val, max_val], [min_val, max_val], 'k--', linewidth=2.5,
-                        label='Perfect Prediction', alpha=0.6)
-                correlation = np.corrcoef(observed, predicted)[0, 1]
-                r_squared = correlation ** 2
-                ax3.text(0.05, 0.95, f'R² = {r_squared:.3f}\\nn = {len(observed)}',
-                        transform=ax3.transAxes, fontsize=12, fontweight='bold',
-                        verticalalignment='top', bbox=dict(boxstyle='round',
-                        facecolor='white', alpha=0.9, edgecolor='#CCCCCC', linewidth=2))
-            except ImportError:
-                ax3.text(0.5, 0.5, 'Cross-Validation\nRequires Ax >= 0.2.0\n\nUpgrade: pip install --upgrade ax-platform',
-                        ha='center', va='center', fontsize=11, fontweight='bold',
-                        transform=ax3.transAxes, color='gray')
-            except Exception as e:
-                ax3.text(0.5, 0.5, f'Cross-Validation Not Available\n\n{str(e)[:60]}',
-                        ha='center', va='center', fontsize=11, fontweight='bold',
-                        transform=ax3.transAxes, color='gray')
-            ax3.set_xlabel(f'Observed {self.response_column}', fontsize=13, fontweight='bold', color='#333333')
-            ax3.set_ylabel(f'Predicted {self.response_column}', fontsize=13, fontweight='bold', color='#333333')
-            ax3.set_title('Model Quality: Cross-Validation',
+            # Mark observed points
+            ax3.scatter(factor1_values, factor2_values, c='black', s=120,
+                       marker='o', edgecolors='white', linewidth=2.5,
+                       label='Observed Points', zorder=5)
+
+            # Mark the best point
+            best_idx = np.argmax(response_values)
+            ax3.scatter([factor1_values[best_idx]], [factor2_values[best_idx]],
+                       c='lime', s=350, marker='*', edgecolors='black',
+                       linewidth=3, label='Best Point', zorder=6)
+
+            # Add colorbar
+            cbar3 = plt.colorbar(contour3, ax=ax3, orientation='vertical', pad=0.02, shrink=0.9)
+            cbar3.set_label('GP Standard Error', fontsize=13, fontweight='bold')
+            cbar3.ax.tick_params(labelsize=11)
+
+            # Calculate uncertainty statistics
+            mean_uncertainty = np.mean(Z_sem)
+            max_uncertainty = np.max(Z_sem)
+            min_uncertainty = np.min(Z_sem)
+            ax3.text(0.05, 0.95, f'Mean: {mean_uncertainty:.3f}\\nMax: {max_uncertainty:.3f}\\nMin: {min_uncertainty:.3f}',
+                    transform=ax3.transAxes, fontsize=11, fontweight='bold',
+                    verticalalignment='top', bbox=dict(boxstyle='round',
+                    facecolor='white', alpha=0.9, edgecolor='#CCCCCC', linewidth=2))
+
+            ax3.set_xlabel(factor1_label, fontsize=13, fontweight='bold', color='#333333')
+            ax3.set_ylabel(factor2_label, fontsize=13, fontweight='bold', color='#333333')
+            ax3.set_title('Model Uncertainty (GP Standard Error)',
                         fontsize=15, fontweight='bold', pad=15, color='#1a1a1a')
-            ax3.legend(fontsize=11, framealpha=0.95, edgecolor='#CCCCCC', loc='best')
+            ax3.legend(fontsize=11, framealpha=0.95, edgecolor='#CCCCCC', loc='lower right')
             ax3.grid(True, alpha=0.2, linestyle='-', linewidth=0.8, color='gray')
             ax3.set_facecolor('#FAFAFA')
             plt.tight_layout()
-            filepath3 = os.path.join(directory, f'BO_CrossValidation_{timestamp}.png')
+            filepath3 = os.path.join(directory, f'BO_Uncertainty_{timestamp}.png')
             fig3.savefig(filepath3, dpi=300, bbox_inches='tight')
             plt.close(fig3)
             exported_files.append(filepath3)
