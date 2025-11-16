@@ -882,9 +882,16 @@ class BayesianOptimizer:
             # Debug: Check what we have
             print(f"  [Debug] Adapter type: {type(adapter).__name__}")
 
-            # List all public attributes to find where model is stored
-            public_attrs = [a for a in dir(adapter) if not a.startswith('_') and not callable(getattr(adapter, a, None))]
-            print(f"  [Debug] Public non-method attributes: {public_attrs}")
+            # Check for private model attributes
+            private_model_attrs = [a for a in dir(adapter) if a.startswith('_') and 'model' in a.lower()]
+            print(f"  [Debug] Private model-related attrs: {private_model_attrs}")
+
+            # Check generator
+            if hasattr(adapter, 'generator'):
+                gen = adapter.generator
+                print(f"  [Debug] Generator type: {type(gen).__name__}")
+                gen_model_attrs = [a for a in dir(gen) if 'model' in a.lower() and not a.startswith('__')]
+                print(f"  [Debug] Generator model-related attrs: {gen_model_attrs}")
 
             # Try multiple paths to find the GP model's covariance module
             covar = None
@@ -895,8 +902,12 @@ class BayesianOptimizer:
                 model = adapter.model
             elif hasattr(adapter, '_model'):
                 model = adapter._model
+            elif hasattr(adapter, '_botorch_model'):
+                model = adapter._botorch_model
             elif hasattr(adapter, 'botorch_model'):
                 model = adapter.botorch_model
+            elif hasattr(adapter, 'generator') and hasattr(adapter.generator, 'model'):
+                model = adapter.generator.model
             elif hasattr(adapter, 'surrogate'):
                 # Surrogate might contain the model
                 surrogate = adapter.surrogate
