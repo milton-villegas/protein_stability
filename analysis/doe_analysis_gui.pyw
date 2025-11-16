@@ -931,13 +931,17 @@ class BayesianOptimizer:
 
             # Extract Sobol indices from the analysis card
             # The blob is a JSON string containing the plotly figure
+            print(f"  [Debug] Card is None: {card is None}")
             if card is not None:
                 import json
                 import plotly.graph_objects as go
 
+                print(f"  [Debug] Parsing JSON blob...")
                 # Parse the JSON blob to get the plotly figure data
                 blob_json = json.loads(card.blob)
                 fig = go.Figure(blob_json)
+                print(f"  [Debug] Figure created, has data: {hasattr(fig, 'data')}")
+                print(f"  [Debug] Number of traces: {len(fig.data) if hasattr(fig, 'data') else 0}")
 
                 # Parse Sobol indices from the plotly figure data
                 # The data structure contains parameter names and their total Sobol indices
@@ -945,18 +949,30 @@ class BayesianOptimizer:
 
                 if hasattr(fig, 'data') and len(fig.data) > 0:
                     # Extract from plotly bar chart data
-                    for trace in fig.data:
+                    for idx, trace in enumerate(fig.data):
+                        print(f"  [Debug] Trace {idx}: has x={hasattr(trace, 'x')}, has y={hasattr(trace, 'y')}")
                         if hasattr(trace, 'x') and hasattr(trace, 'y'):
                             param_names = trace.x
                             sobol_values = trace.y
+                            print(f"  [Debug] Param names: {param_names}")
+                            print(f"  [Debug] Sobol values: {sobol_values}")
+                            print(f"  [Debug] Numeric factors: {self.numeric_factors}")
 
                             for param_name, sobol_val in zip(param_names, sobol_values):
                                 # Map sanitized parameter names back to original factor names
                                 for orig_factor in self.numeric_factors:
                                     sanitized = self.reverse_mapping.get(orig_factor, orig_factor)
                                     if sanitized == param_name:
+                                        print(f"  [Debug] Matched {param_name} -> {orig_factor} = {sobol_val}")
                                         sensitivities[orig_factor] = float(sobol_val)
                                         break
+                                else:
+                                    print(f"  [Debug] No match for param: {param_name}")
+                else:
+                    print(f"  [Debug] Figure has no data traces")
+
+                print(f"  [Debug] Final sensitivities: {sensitivities}")
+                print(f"  [Debug] Number of sensitivities: {len(sensitivities)}")
 
                 if len(sensitivities) >= 2:
                     print(f"✓ Using Sobol sensitivity indices")
