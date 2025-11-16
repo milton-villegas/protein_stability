@@ -890,8 +890,10 @@ class BayesianOptimizer:
             if hasattr(adapter, 'generator'):
                 gen = adapter.generator
                 print(f"  [Debug] Generator type: {type(gen).__name__}")
-                gen_model_attrs = [a for a in dir(gen) if 'model' in a.lower() and not a.startswith('__')]
-                print(f"  [Debug] Generator model-related attrs: {gen_model_attrs}")
+                gen_public_attrs = [a for a in dir(gen) if not a.startswith('_')]
+                print(f"  [Debug] Generator public attrs: {gen_public_attrs[:20]}")
+                gen_private_model = [a for a in dir(gen) if a.startswith('_') and 'model' in a.lower()]
+                print(f"  [Debug] Generator private model attrs: {gen_private_model}")
 
             # Try multiple paths to find the GP model's covariance module
             covar = None
