@@ -2097,7 +2097,7 @@ class DesignerTab(ttk.Frame):
                 defaultextension=".xlsx",
                 filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
                 title="Save Factorial Design",
-                initialfile="Experiment.xlsx"
+                initialfile="Design1.xlsx"
             )
 
             if not path:

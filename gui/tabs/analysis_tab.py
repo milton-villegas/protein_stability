@@ -2708,7 +2708,7 @@ class AnalysisTab(ttk.Frame):
         filepath = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
             filetypes=[("Excel files", "*.xlsx")],
-            initialfile="Experiment.xlsx"
+            initialfile="Analysis1.xlsx"
         )
 
         if filepath:
@@ -2897,7 +2897,7 @@ class AnalysisTab(ttk.Frame):
         base_name = filedialog.asksaveasfilename(
             defaultextension=f".{file_format}",
             filetypes=[format_map[file_format], ("All files", "*.*")],
-            initialfile=f"Experiment.{file_format}",
+            initialfile=f"Plots1.{file_format}",
             title="Choose base name for plots (will create multiple files)"
         )
 
@@ -3079,7 +3079,7 @@ class AnalysisTab(ttk.Frame):
         base_name = filedialog.asksaveasfilename(
             defaultextension=f".{file_format}",
             filetypes=[format_map[file_format], ("All files", "*.*")],
-            initialfile=f"Experiment.{file_format}",
+            initialfile=f"Plots1.{file_format}",
             title="Choose base name for BO plots (will create multiple files)"
         )
 
