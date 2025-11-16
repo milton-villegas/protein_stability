@@ -1229,6 +1229,60 @@ class DesignerTab(ttk.Frame):
         
         return f"{row_384}{col_384}"
     
+    def _filter_categorical_combinations(self, combinations: List[Tuple], factor_names: List[str]) -> List[Tuple]:
+        """Filter out illogical categorical-concentration pairings
+
+        Rules:
+        - If detergent is None/0, detergent_concentration must be 0
+        - If detergent has a value (Triton, etc.), detergent_concentration must be > 0
+        - Same logic for reducing_agent and buffer pH
+        """
+        filtered = []
+
+        for combo in combinations:
+            row_dict = {factor_names[i]: combo[i] for i in range(len(factor_names))}
+            valid = True
+
+            # Check detergent-concentration pairing
+            if "detergent" in row_dict and "detergent_concentration" in row_dict:
+                det = str(row_dict["detergent"]).strip()
+                det_conc = float(row_dict["detergent_concentration"])
+
+                # If detergent is None/empty, concentration must be 0
+                if det.lower() in ['none', '0', '', 'nan']:
+                    if det_conc != 0:
+                        valid = False
+                # If detergent has a value, concentration must be > 0
+                else:
+                    if det_conc == 0:
+                        valid = False
+
+            # Check reducing_agent-concentration pairing
+            if "reducing_agent" in row_dict and "reducing_agent_concentration" in row_dict:
+                agent = str(row_dict["reducing_agent"]).strip()
+                agent_conc = float(row_dict["reducing_agent_concentration"])
+
+                # If agent is None/empty, concentration must be 0
+                if agent.lower() in ['none', '0', '', 'nan']:
+                    if agent_conc != 0:
+                        valid = False
+                # If agent has a value, concentration must be > 0
+                else:
+                    if agent_conc == 0:
+                        valid = False
+
+            # Check buffer pH-concentration pairing
+            if "buffer pH" in row_dict and "buffer_concentration" in row_dict:
+                # pH is always defined if present, so concentration should always be > 0
+                buffer_conc = float(row_dict["buffer_concentration"])
+                if buffer_conc == 0:
+                    valid = False
+
+            if valid:
+                filtered.append(combo)
+
+        return filtered
+
     def _generate_lhs_design(self, factors: Dict[str, List[str]], n_samples: int) -> List[Tuple]:
         """Generate Latin Hypercube Sampling design using pyDOE3 or SMT
 
@@ -1678,11 +1732,13 @@ class DesignerTab(ttk.Frame):
             design_type = display_text
         
         factor_names = list(factors.keys())
-        
+
         if design_type == "full_factorial":
             # Original full factorial logic
             level_lists = [factors[f] for f in factor_names]
             combinations = list(itertools.product(*level_lists))
+            # Filter out illogical categorical-concentration pairings
+            combinations = self._filter_categorical_combinations(combinations, factor_names)
         
         elif design_type == "lhs":
             # Latin Hypercube Sampling
@@ -1695,24 +1751,29 @@ class DesignerTab(ttk.Frame):
                 raise ValueError("Sample size must be at least 1.")
             
             combinations = self._generate_lhs_design(factors, n_samples)
-        
+            combinations = self._filter_categorical_combinations(combinations, factor_names)
+
         elif design_type == "fractional":
             # 2-Level Fractional Factorial
             resolution = self.resolution_var.get()
             combinations = self._generate_fractional_factorial(factors, resolution)
-        
+            combinations = self._filter_categorical_combinations(combinations, factor_names)
+
         elif design_type == "plackett_burman":
             # Plackett-Burman screening design
             combinations = self._generate_plackett_burman(factors)
-        
+            combinations = self._filter_categorical_combinations(combinations, factor_names)
+
         elif design_type == "central_composite":
             # Central Composite Design
             ccd_type = self.ccd_type_var.get()
             combinations = self._generate_central_composite(factors, ccd_type)
-        
+            combinations = self._filter_categorical_combinations(combinations, factor_names)
+
         elif design_type == "box_behnken":
             # Box-Behnken design
             combinations = self._generate_box_behnken(factors)
+            combinations = self._filter_categorical_combinations(combinations, factor_names)
         
         else:
             raise ValueError(f"Unknown design type: {design_type}")
