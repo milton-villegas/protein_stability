@@ -1231,71 +1231,113 @@ class DesignerTab(ttk.Frame):
     
     def _generate_lhs_design(self, factors: Dict[str, List[str]], n_samples: int) -> List[Tuple]:
         """Generate Latin Hypercube Sampling design using pyDOE3 or SMT
-        
+
         Args:
             factors: Dictionary of factor names to level lists
             n_samples: Number of samples to generate
-        
+
         Returns:
             List of tuples representing combinations
         """
         factor_names = list(factors.keys())
         n_factors = len(factor_names)
-        
+
+        # Identify categorical factors (non-numeric)
+        categorical_factors = ["buffer pH", "detergent", "reducing_agent"]
+
+        # Separate numeric and categorical factors
+        numeric_factor_names = []
+        categorical_factor_names = []
+        for fn in factor_names:
+            if fn in categorical_factors:
+                categorical_factor_names.append(fn)
+            else:
+                numeric_factor_names.append(fn)
+
+        n_numeric = len(numeric_factor_names)
+
         # Check if user wants optimized LHS with SMT
         use_smt = self.optimize_lhs_var.get() and HAS_SMT
-        
-        if use_smt:
-            # Use SMT for optimized LHS with maximin criterion
-            # Build xlimits array for SMT
-            xlimits = []
-            for factor_name in factor_names:
-                levels = factors[factor_name]
-                # Convert to float and get min/max range
-                numeric_levels = [float(lv) for lv in levels]
-                xlimits.append([min(numeric_levels), max(numeric_levels)])
-            
-            xlimits = np.array(xlimits)
-            
-            # Generate optimized LHS
-            sampling = LHS(xlimits=xlimits, criterion='maximin')
-            lhs_design = sampling(n_samples)
-            
-            # Map continuous values to discrete levels
-            combinations = []
-            for sample in lhs_design:
-                combo = []
-                for i, factor_name in enumerate(factor_names):
+
+        if n_numeric > 0:
+            if use_smt:
+                # Use SMT for optimized LHS with maximin criterion (numeric factors only)
+                xlimits = []
+                for factor_name in numeric_factor_names:
                     levels = factors[factor_name]
+                    # Convert to float and get min/max range
                     numeric_levels = [float(lv) for lv in levels]
-                    # Find closest level to the continuous value
-                    value = sample[i]
-                    closest_idx = min(range(len(numeric_levels)), 
-                                    key=lambda j: abs(numeric_levels[j] - value))
-                    combo.append(levels[closest_idx])
-                combinations.append(tuple(combo))
-        
+                    xlimits.append([min(numeric_levels), max(numeric_levels)])
+
+                xlimits = np.array(xlimits)
+
+                # Generate optimized LHS
+                sampling = LHS(xlimits=xlimits, criterion='maximin')
+                lhs_design = sampling(n_samples)
+
+                # Map continuous values to discrete levels
+                numeric_combinations = []
+                for sample in lhs_design:
+                    combo = []
+                    for i, factor_name in enumerate(numeric_factor_names):
+                        levels = factors[factor_name]
+                        numeric_levels = [float(lv) for lv in levels]
+                        # Find closest level to the continuous value
+                        value = sample[i]
+                        closest_idx = min(range(len(numeric_levels)),
+                                        key=lambda j: abs(numeric_levels[j] - value))
+                        combo.append(levels[closest_idx])
+                    numeric_combinations.append(combo)
+
+            else:
+                # Use standard pyDOE3 LHS (numeric factors only)
+                if not HAS_PYDOE3:
+                    raise ImportError("pyDOE3 is required for Latin Hypercube Sampling. "
+                                    "Install with: pip install pyDOE3")
+
+                # Generate LHS design in [0,1] hypercube
+                lhs_design = pyDOE3.lhs(n=n_numeric, samples=n_samples, criterion='center')
+
+                # Map to actual factor levels
+                numeric_combinations = []
+                for sample in lhs_design:
+                    combo = []
+                    for i, factor_name in enumerate(numeric_factor_names):
+                        levels = factors[factor_name]
+                        # Map [0,1] to level index
+                        level_idx = int(sample[i] * len(levels))
+                        level_idx = min(level_idx, len(levels) - 1)  # Ensure within bounds
+                        combo.append(levels[level_idx])
+                    numeric_combinations.append(combo)
         else:
-            # Use standard pyDOE3 LHS
-            if not HAS_PYDOE3:
-                raise ImportError("pyDOE3 is required for Latin Hypercube Sampling. "
-                                "Install with: pip install pyDOE3")
-            
-            # Generate LHS design in [0,1] hypercube
-            lhs_design = pyDOE3.lhs(n=n_factors, samples=n_samples, criterion='center')
-            
-            # Map to actual factor levels
-            combinations = []
-            for sample in lhs_design:
-                combo = []
-                for i, factor_name in enumerate(factor_names):
-                    levels = factors[factor_name]
-                    # Map [0,1] to level index
-                    level_idx = int(sample[i] * len(levels))
-                    level_idx = min(level_idx, len(levels) - 1)  # Ensure within bounds
-                    combo.append(levels[level_idx])
-                combinations.append(tuple(combo))
-        
+            # No numeric factors, create empty combinations
+            numeric_combinations = [[] for _ in range(n_samples)]
+
+        # Handle categorical factors by random sampling
+        categorical_combinations = []
+        for _ in range(n_samples):
+            cat_combo = []
+            for factor_name in categorical_factor_names:
+                levels = factors[factor_name]
+                # Randomly sample from categorical levels
+                cat_combo.append(np.random.choice(levels))
+            categorical_combinations.append(cat_combo)
+
+        # Combine numeric and categorical factors in original order
+        combinations = []
+        for i in range(n_samples):
+            combo = []
+            numeric_idx = 0
+            categorical_idx = 0
+            for fn in factor_names:
+                if fn in categorical_factors:
+                    combo.append(categorical_combinations[i][categorical_idx])
+                    categorical_idx += 1
+                else:
+                    combo.append(numeric_combinations[i][numeric_idx])
+                    numeric_idx += 1
+            combinations.append(tuple(combo))
+
         return combinations
     
     def _generate_fractional_factorial(self, factors: Dict[str, List[str]], resolution: str) -> List[Tuple]:
@@ -1395,21 +1437,37 @@ class DesignerTab(ttk.Frame):
     
     def _generate_central_composite(self, factors: Dict[str, List[str]], ccd_type: str) -> List[Tuple]:
         """Generate Central Composite Design using pyDOE3
-        
+
         Args:
             factors: Dictionary of factor names to level lists
             ccd_type: Type of CCD ('faced', 'inscribed', or 'circumscribed')
-        
+
         Returns:
             List of tuples representing combinations
         """
         if not HAS_PYDOE3:
             raise ImportError("pyDOE3 is required for Central Composite designs. "
                             "Install with: pip install pyDOE3")
-        
+
         factor_names = list(factors.keys())
-        n_factors = len(factor_names)
-        
+
+        # Identify categorical factors
+        categorical_factors = ["buffer pH", "detergent", "reducing_agent"]
+
+        # Separate numeric and categorical factors
+        numeric_factor_names = []
+        categorical_factor_names = []
+        for fn in factor_names:
+            if fn in categorical_factors:
+                categorical_factor_names.append(fn)
+            else:
+                numeric_factor_names.append(fn)
+
+        n_numeric = len(numeric_factor_names)
+
+        if n_numeric == 0:
+            raise ValueError("Central Composite Design requires at least one numeric factor.")
+
         # Determine face parameter based on type
         if ccd_type == "faced":
             face = "faced"
@@ -1419,32 +1477,30 @@ class DesignerTab(ttk.Frame):
             face = "circumscribed"
         else:
             face = "faced"  # Default
-        
-        # Generate CCD design (returns coded values -1, 0, +1, and alpha)
-        design = pyDOE3.ccdesign(n_factors, center=(4, 4), alpha='orthogonal', face=face)
-        
-        # Map coded values to actual factor levels
-        combinations = []
+
+        # Generate CCD design for numeric factors only
+        design = pyDOE3.ccdesign(n_numeric, center=(4, 4), alpha='orthogonal', face=face)
+
+        # Map coded values to actual factor levels (numeric only)
+        numeric_combinations = []
         for row in design:
             combo = []
-            for i, factor_name in enumerate(factor_names):
+            for i, factor_name in enumerate(numeric_factor_names):
                 levels = factors[factor_name]
                 numeric_levels = sorted([float(lv) for lv in levels])
-                
+
                 # Map coded value to actual level
-                # -1 = min, 0 = center, +1 = max
                 if len(numeric_levels) >= 3:
                     min_val = numeric_levels[0]
                     max_val = numeric_levels[-1]
                     center_val = numeric_levels[len(numeric_levels)//2]
                 else:
-                    # If only 2 levels, compute center
                     min_val = numeric_levels[0]
                     max_val = numeric_levels[-1]
                     center_val = (min_val + max_val) / 2
-                
+
                 coded_val = row[i]
-                
+
                 # Map coded value to actual value
                 if abs(coded_val) < 0.1:  # Center point (0)
                     actual_val = center_val
@@ -1453,67 +1509,105 @@ class DesignerTab(ttk.Frame):
                 elif coded_val > 0.5:  # High level (+1)
                     actual_val = max_val
                 else:
-                    # Axial point (alpha), scale accordingly
+                    # Axial point (alpha)
                     actual_val = center_val + coded_val * (max_val - min_val) / 2
-                
+
                 # Find closest existing level or use computed value
                 if len(levels) > 2:
-                    # Find closest level
                     closest = min(levels, key=lambda x: abs(float(x) - actual_val))
                     combo.append(closest)
                 else:
-                    # Use computed value rounded
                     combo.append(str(round(actual_val, 2)))
-            
-            combinations.append(tuple(combo))
-        
-        return combinations
+
+            numeric_combinations.append(combo)
+
+        # Handle categorical factors - use all combinations
+        if categorical_factor_names:
+            categorical_level_lists = [factors[fn] for fn in categorical_factor_names]
+            categorical_combos = list(itertools.product(*categorical_level_lists))
+
+            # Combine numeric CCD with all categorical combinations
+            all_combinations = []
+            for num_combo in numeric_combinations:
+                for cat_combo in categorical_combos:
+                    # Merge in original factor order
+                    combo = []
+                    num_idx = 0
+                    cat_idx = 0
+                    for fn in factor_names:
+                        if fn in categorical_factors:
+                            combo.append(cat_combo[cat_idx])
+                            cat_idx += 1
+                        else:
+                            combo.append(num_combo[num_idx])
+                            num_idx += 1
+                    all_combinations.append(tuple(combo))
+            return all_combinations
+        else:
+            # No categorical factors, return numeric combinations in order
+            return [tuple(combo) for combo in numeric_combinations]
     
     def _generate_box_behnken(self, factors: Dict[str, List[str]]) -> List[Tuple]:
         """Generate Box-Behnken design using pyDOE3
-        
+
         Args:
             factors: Dictionary of factor names to level lists (requires 3+ factors)
-        
+
         Returns:
             List of tuples representing combinations
         """
         if not HAS_PYDOE3:
             raise ImportError("pyDOE3 is required for Box-Behnken designs. "
                             "Install with: pip install pyDOE3")
-        
+
         factor_names = list(factors.keys())
-        n_factors = len(factor_names)
-        
-        if n_factors < 3:
+
+        # Identify categorical factors
+        categorical_factors = ["buffer pH", "detergent", "reducing_agent"]
+
+        # Separate numeric and categorical factors
+        numeric_factor_names = []
+        categorical_factor_names = []
+        for fn in factor_names:
+            if fn in categorical_factors:
+                categorical_factor_names.append(fn)
+            else:
+                numeric_factor_names.append(fn)
+
+        n_numeric = len(numeric_factor_names)
+        n_total = len(factor_names)
+
+        if n_total < 3:
             raise ValueError("Box-Behnken design requires at least 3 factors. "
-                           f"You have {n_factors} factor(s).")
-        
-        # Generate Box-Behnken design (returns coded values -1, 0, +1)
-        design = pyDOE3.bbdesign(n_factors, center=3)
-        
-        # Map coded values to actual factor levels
-        combinations = []
+                           f"You have {n_total} factor(s).")
+
+        if n_numeric < 3:
+            raise ValueError("Box-Behnken design requires at least 3 numeric factors. "
+                           f"You have {n_numeric} numeric factor(s).")
+
+        # Generate Box-Behnken design for numeric factors only
+        design = pyDOE3.bbdesign(n_numeric, center=3)
+
+        # Map coded values to actual factor levels (numeric only)
+        numeric_combinations = []
         for row in design:
             combo = []
-            for i, factor_name in enumerate(factor_names):
+            for i, factor_name in enumerate(numeric_factor_names):
                 levels = factors[factor_name]
                 numeric_levels = sorted([float(lv) for lv in levels])
-                
+
                 # Map coded value to actual level
-                # -1 = min, 0 = center, +1 = max
                 if len(numeric_levels) >= 3:
                     min_val = numeric_levels[0]
                     max_val = numeric_levels[-1]
                     center_val = numeric_levels[len(numeric_levels)//2]
                 else:
-                    # If only 2 levels, compute center
                     min_val = numeric_levels[0]
                     max_val = numeric_levels[-1]
                     center_val = (min_val + max_val) / 2
-                
+
                 coded_val = row[i]
-                
+
                 # Map to closest level
                 if abs(coded_val) < 0.1:  # Center (0)
                     actual_val = center_val
@@ -1521,17 +1615,41 @@ class DesignerTab(ttk.Frame):
                     actual_val = min_val
                 else:  # High (+1)
                     actual_val = max_val
-                
+
                 # Find closest existing level or use computed value
                 if len(levels) >= 3:
                     closest = min(levels, key=lambda x: abs(float(x) - actual_val))
                     combo.append(closest)
                 else:
                     combo.append(str(round(actual_val, 2)))
-            
-            combinations.append(tuple(combo))
-        
-        return combinations
+
+            numeric_combinations.append(combo)
+
+        # Handle categorical factors - use all combinations
+        if categorical_factor_names:
+            categorical_level_lists = [factors[fn] for fn in categorical_factor_names]
+            categorical_combos = list(itertools.product(*categorical_level_lists))
+
+            # Combine numeric BB with all categorical combinations
+            all_combinations = []
+            for num_combo in numeric_combinations:
+                for cat_combo in categorical_combos:
+                    # Merge in original factor order
+                    combo = []
+                    num_idx = 0
+                    cat_idx = 0
+                    for fn in factor_names:
+                        if fn in categorical_factors:
+                            combo.append(cat_combo[cat_idx])
+                            cat_idx += 1
+                        else:
+                            combo.append(num_combo[num_idx])
+                            num_idx += 1
+                    all_combinations.append(tuple(combo))
+            return all_combinations
+        else:
+            # No categorical factors, return numeric combinations in order
+            return [tuple(combo) for combo in numeric_combinations]
     
     def _build_factorial_with_volumes(self) -> Tuple[List[str], List[List], List[str], List[List]]:
         """Build factorial design (full or LHS) and calculate volumes"""
