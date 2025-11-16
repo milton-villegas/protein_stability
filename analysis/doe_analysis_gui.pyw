@@ -90,11 +90,17 @@ class DataHandler:
             self.stock_concentrations = {}
             for _, row in stock_df.iterrows():
                 factor_name = str(row['Factor Name']).strip()
-                stock_value = float(row['Stock Value'])
-                
+                stock_value_raw = row['Stock Value']
+
+                # Skip rows with None or NaN values
+                if pd.isna(stock_value_raw):
+                    continue
+
+                stock_value = float(stock_value_raw)
+
                 # Smart matching algorithm - convert display name to internal key
                 internal_name = self._smart_factor_match(factor_name)
-                
+
                 if internal_name:
                     self.stock_concentrations[internal_name] = stock_value
             
@@ -360,7 +366,18 @@ class DoEAnalyzer:
 
 class DoEPlotter:
     """Plotting functions for DoE"""
-    
+
+    # Professional colorblind-safe palette (Okabe-Ito)
+    COLORS = {
+        'primary': '#0173B2',      # Blue
+        'secondary': '#DE8F05',    # Orange
+        'accent': '#CC78BC',       # Reddish Purple
+        'warning': '#D55E00',      # Vermillion
+        'success': '#029E73',      # Bluish Green
+        'palette': ['#0173B2', '#DE8F05', '#029E73', '#D55E00',
+                   '#56B4E9', '#CC78BC', '#ECE133', '#000000']
+    }
+
     def __init__(self):
         self.data = None
         self.factor_columns = []
@@ -391,12 +408,12 @@ class DoEPlotter:
             means = [grouped.loc[level, 'mean'] for level in levels]
             stds = [grouped.loc[level, 'std'] for level in levels]
             
-            ax.plot(range(len(levels)), means, 'o-', linewidth=2, markersize=8, color='steelblue')
+            ax.plot(range(len(levels)), means, 'o-', linewidth=2, markersize=8, color=self.COLORS['primary'])
             # Shaded region shows ± 1 std dev
-            ax.fill_between(range(len(levels)), 
+            ax.fill_between(range(len(levels)),
                            [m - s for m, s in zip(means, stds)],
                            [m + s for m, s in zip(means, stds)],
-                           alpha=0.2, color='steelblue')
+                           alpha=0.2, color=self.COLORS['primary'])
             
             ax.set_xlabel(factor, fontsize=11, fontweight='bold')
             ax.set_ylabel('Mean Response', fontsize=11, fontweight='bold')
@@ -435,8 +452,8 @@ class DoEPlotter:
                     grouped = self.data.groupby(factor1)[self.response_column].mean()
                     levels = sorted(self.data[factor1].unique())
                     means = [grouped.loc[level] for level in levels]
-                    
-                    ax.plot(range(len(levels)), means, 'o-', linewidth=2, color='steelblue')
+
+                    ax.plot(range(len(levels)), means, 'o-', linewidth=2, color=self.COLORS['primary'])
                     ax.set_xticks(range(len(levels)))
                     ax.set_xticklabels(levels, rotation=45, ha='right', fontsize=8)
                     
@@ -447,14 +464,15 @@ class DoEPlotter:
                 elif i > j:
                     levels1 = sorted(self.data[factor1].unique())
                     levels2 = sorted(self.data[factor2].unique())
-                    
-                    for level2 in levels2:
+
+                    for idx, level2 in enumerate(levels2):
                         subset = self.data[self.data[factor2] == level2]
                         grouped = subset.groupby(factor1)[self.response_column].mean()
-                        means = [grouped.loc[level1] if level1 in grouped.index else np.nan 
+                        means = [grouped.loc[level1] if level1 in grouped.index else np.nan
                                 for level1 in levels1]
-                        ax.plot(range(len(levels1)), means, 'o-', linewidth=1.5, 
-                               label=f'{factor2}={level2}', alpha=0.7)
+                        color = self.COLORS['palette'][idx % len(self.COLORS['palette'])]
+                        ax.plot(range(len(levels1)), means, 'o-', linewidth=1.5,
+                               label=f'{factor2}={level2}', alpha=0.85, color=color)
                     
                     ax.set_xticks(range(len(levels1)))
                     ax.set_xticklabels(levels1, rotation=45, ha='right', fontsize=8)
@@ -494,8 +512,8 @@ class DoEPlotter:
         fig, axes = plt.subplots(2, 2, figsize=(9, 7))
         
         # Residuals vs Fitted
-        axes[0, 0].scatter(predictions, residuals, alpha=0.5)
-        axes[0, 0].axhline(y=0, color='r', linestyle='--', linewidth=2)
+        axes[0, 0].scatter(predictions, residuals, alpha=0.6, color=self.COLORS['primary'], edgecolors='white', linewidth=0.5)
+        axes[0, 0].axhline(y=0, color=self.COLORS['warning'], linestyle='--', linewidth=2)
         axes[0, 0].set_xlabel('Fitted Values', fontsize=11)
         axes[0, 0].set_ylabel('Residuals', fontsize=11)
         axes[0, 0].set_title('Residuals vs Fitted', fontsize=12, fontweight='bold')
@@ -509,14 +527,15 @@ class DoEPlotter:
         intercept = qq_data[1][1]
         
         # Plot data points with swapped axes
-        axes[0, 1].plot(ordered_residuals, theoretical_quantiles, 'o', markersize=5)
-        
+        axes[0, 1].plot(ordered_residuals, theoretical_quantiles, 'o', markersize=6,
+                       color=self.COLORS['primary'], alpha=0.7, markeredgecolor='white', markeredgewidth=0.5)
+
         # Reference line: Since normal relationship is y = slope*x + intercept
         # When we swap axes, the line becomes: theoretical = (actual - intercept) / slope
         # Or simplified: theoretical = (1/slope) * actual - (intercept/slope)
         x_line = np.array([ordered_residuals.min(), ordered_residuals.max()])
         y_line = (x_line - intercept) / slope
-        axes[0, 1].plot(x_line, y_line, 'r-', linewidth=2)
+        axes[0, 1].plot(x_line, y_line, '-', linewidth=2, color=self.COLORS['warning'])
         
         axes[0, 1].set_xlabel('Actual residual', fontsize=11)
         axes[0, 1].set_ylabel('Predicted residual', fontsize=11)
@@ -525,14 +544,16 @@ class DoEPlotter:
         
         # Scale-Location
         standardized_resid = residuals / residuals.std()
-        axes[1, 0].scatter(predictions, np.sqrt(np.abs(standardized_resid)), alpha=0.5)
+        axes[1, 0].scatter(predictions, np.sqrt(np.abs(standardized_resid)), alpha=0.6,
+                          color=self.COLORS['primary'], edgecolors='white', linewidth=0.5)
         axes[1, 0].set_xlabel('Fitted Values', fontsize=11)
         axes[1, 0].set_ylabel('√|Standardized Residuals|', fontsize=11)
         axes[1, 0].set_title('Scale-Location', fontsize=12, fontweight='bold')
         axes[1, 0].grid(True, alpha=0.3)
         
         # Histogram
-        axes[1, 1].hist(residuals, bins=30, edgecolor='black', alpha=0.7)
+        axes[1, 1].hist(residuals, bins=30, color=self.COLORS['primary'],
+                       edgecolor='white', alpha=0.8, linewidth=1.2)
         axes[1, 1].set_xlabel('Residuals', fontsize=11)
         axes[1, 1].set_ylabel('Frequency', fontsize=11)
         axes[1, 1].set_title('Histogram of Residuals', fontsize=12, fontweight='bold')
@@ -599,7 +620,14 @@ class ResultsExporter:
 
 class BayesianOptimizer:
     """Bayesian Optimization for intelligent experiment suggestions"""
-    
+
+    # Professional colorblind-safe palette (Okabe-Ito)
+    COLORS = {
+        'primary': '#0173B2',      # Blue
+        'accent': '#CC78BC',       # Reddish Purple
+        'warning': '#D55E00',      # Vermillion
+    }
+
     def __init__(self):
         self.ax_client = None
         self.data = None
@@ -756,17 +784,18 @@ class BayesianOptimizer:
         
         return suggestions
     
-    def _create_suggestion_heatmap(self, factor_x_orig, factor_y_orig, 
+    def _create_suggestion_heatmap(self, factor_x_orig, factor_y_orig,
                                    factor_x_san, factor_y_san, X, Y):
-        """Create a heatmap showing where BO suggests exploring"""
+        """Create a heatmap showing where BO suggests exploring - ENHANCED VERSION"""
         try:
-            fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-            
+            # Larger for export quality
+            fig, ax = plt.subplots(1, 1, figsize=(9, 7))
+
             # Generate many suggestions and extract their x,y positions
             n_suggestions = 50
             suggestions_x = []
             suggestions_y = []
-            
+
             for _ in range(n_suggestions):
                 try:
                     params, trial_idx = self.ax_client.get_next_trial()
@@ -775,38 +804,58 @@ class BayesianOptimizer:
                     self.ax_client.abandon_trial(trial_idx)
                 except:
                     break
-            
+
             if len(suggestions_x) < 5:
                 print("Could not generate enough suggestions for heatmap")
                 return None
-            
+
             # Create 2D histogram / density plot
             from scipy.stats import gaussian_kde
             xy = np.vstack([suggestions_x, suggestions_y])
             z = gaussian_kde(xy)(xy)
-            
-            # Plot scatter with density colors
-            scatter = ax.scatter(suggestions_x, suggestions_y, c=z, s=100, 
-                               cmap='viridis', alpha=0.6, edgecolors='black', linewidth=1)
-            plt.colorbar(scatter, ax=ax, label='Suggestion Density\n(Higher = More Recommended)')
-            
-            # Plot existing experiments
+
+            # Plot scatter with density colors - modern colormap
+            scatter = ax.scatter(suggestions_x, suggestions_y, c=z, s=150,
+                               cmap='plasma', alpha=0.7,
+                               edgecolors='white', linewidth=2)
+
+            # Enhanced colorbar
+            cbar = plt.colorbar(scatter, ax=ax, label='Suggestion Density')
+            cbar.ax.tick_params(labelsize=11)
+            cbar.set_label('Suggestion Density\n(Higher = More Recommended)',
+                          fontsize=12, fontweight='bold')
+
+            # Plot existing experiments with modern styling
             existing_x = self.data[factor_x_orig].values
             existing_y = self.data[factor_y_orig].values
-            ax.scatter(existing_x, existing_y, c='red', s=100,
-                      edgecolors='white', linewidth=2,
-                      label='Existing Experiments', zorder=5, marker='s')
-            
-            ax.set_xlabel(factor_x_orig, fontsize=12, fontweight='bold')
-            ax.set_ylabel(factor_y_orig, fontsize=12, fontweight='bold')
+            ax.scatter(existing_x, existing_y, c='#2E86AB', s=150,
+                      edgecolors='white', linewidth=3,
+                      label='Existing Experiments', zorder=5, marker='s', alpha=0.9)
+
+            # Enhanced labels and title
+            ax.set_xlabel(factor_x_orig, fontsize=13, fontweight='bold', color='#333333')
+            ax.set_ylabel(factor_y_orig, fontsize=13, fontweight='bold', color='#333333')
             ax.set_title('Bayesian Optimization: Recommended Exploration Regions',
-                        fontsize=14, fontweight='bold')
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            
+                        fontsize=15, fontweight='bold', pad=15, color='#1a1a1a')
+
+            # Modern legend
+            ax.legend(fontsize=11, framealpha=0.95, edgecolor='#CCCCCC', loc='best')
+
+            # Modern grid
+            ax.grid(True, alpha=0.2, linestyle='-', linewidth=0.8, color='gray')
+            ax.set_axisbelow(True)
+
+            # Set background
+            ax.set_facecolor('#FAFAFA')
+
+            # Borders
+            for spine in ax.spines.values():
+                spine.set_edgecolor('#CCCCCC')
+                spine.set_linewidth(1.5)
+
             plt.tight_layout()
             return fig
-            
+
         except Exception as e:
             print(f"Error creating suggestion heatmap: {e}")
             import traceback
@@ -928,31 +977,51 @@ class BayesianOptimizer:
                                                        factor_x_sanitized, factor_y_sanitized,
                                                        X, Y)
             
-            # Create the contour plot
-            fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-            
-            # Plot contour
-            contour = ax.contourf(X, Y, Z, levels=15, cmap='viridis', alpha=0.8)
-            plt.colorbar(contour, ax=ax, label=f'Predicted {self.response_column}')
-            
-            # Add contour lines
-            ax.contour(X, Y, Z, levels=8, colors='black', alpha=0.3, linewidths=0.5)
-            
-            # Plot existing data points (use original names)
+            # Create the contour plot - ENHANCED VERSION
+            # Larger for export quality
+            fig, ax = plt.subplots(1, 1, figsize=(9, 7))
+
+            # Modern colormap - use RdYlGn for better visibility (red=low, yellow=mid, green=high)
+            contour = ax.contourf(X, Y, Z, levels=20, cmap='RdYlGn', alpha=0.9)
+
+            # Enhanced colorbar
+            cbar = plt.colorbar(contour, ax=ax, label=f'Predicted {self.response_column}')
+            cbar.ax.tick_params(labelsize=11)
+            cbar.set_label(f'Predicted {self.response_column}', fontsize=12, fontweight='bold')
+
+            # Add contour lines for better readability
+            contour_lines = ax.contour(X, Y, Z, levels=10, colors='black',
+                                       alpha=0.4, linewidths=1.5)
+            ax.clabel(contour_lines, inline=True, fontsize=9, fmt='%.1f')
+
+            # Plot existing data points with modern styling
             existing_x = self.data[factor_x_original].values
             existing_y = self.data[factor_y_original].values
-            ax.scatter(existing_x, existing_y, c='red', s=100, 
-                      edgecolors='white', linewidth=2, 
-                      label='Existing Experiments', zorder=5)
-            
-            # Use original names in labels
-            ax.set_xlabel(factor_x_original, fontsize=12, fontweight='bold')
-            ax.set_ylabel(factor_y_original, fontsize=12, fontweight='bold')
-            ax.set_title('Bayesian Optimization: Predicted Response Surface', 
-                        fontsize=14, fontweight='bold')
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            
+            ax.scatter(existing_x, existing_y, c='#2E86AB', s=150,
+                      edgecolors='white', linewidth=3,
+                      label='Existing Experiments', zorder=5, marker='o', alpha=0.9)
+
+            # Enhanced labels and title
+            ax.set_xlabel(factor_x_original, fontsize=13, fontweight='bold', color='#333333')
+            ax.set_ylabel(factor_y_original, fontsize=13, fontweight='bold', color='#333333')
+            ax.set_title('Bayesian Optimization: Predicted Response Surface',
+                        fontsize=15, fontweight='bold', pad=15, color='#1a1a1a')
+
+            # Modern legend
+            ax.legend(fontsize=11, framealpha=0.95, edgecolor='#CCCCCC', loc='best')
+
+            # Modern grid
+            ax.grid(True, alpha=0.2, linestyle='-', linewidth=0.8, color='gray')
+            ax.set_axisbelow(True)
+
+            # Set background
+            ax.set_facecolor('#FAFAFA')
+
+            # Borders
+            for spine in ax.spines.values():
+                spine.set_edgecolor('#CCCCCC')
+                spine.set_linewidth(1.5)
+
             plt.tight_layout()
             return fig
             
