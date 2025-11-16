@@ -1313,15 +1313,20 @@ class DesignerTab(ttk.Frame):
             # No numeric factors, create empty combinations
             numeric_combinations = [[] for _ in range(n_samples)]
 
-        # Handle categorical factors by random sampling
-        categorical_combinations = []
-        for _ in range(n_samples):
-            cat_combo = []
-            for factor_name in categorical_factor_names:
-                levels = factors[factor_name]
-                # Randomly sample from categorical levels
-                cat_combo.append(np.random.choice(levels))
-            categorical_combinations.append(cat_combo)
+        # Handle categorical factors - cycle through combinations evenly
+        if categorical_factor_names:
+            # Get all combinations of categorical factors
+            categorical_level_lists = [factors[fn] for fn in categorical_factor_names]
+            all_cat_combos = list(itertools.product(*categorical_level_lists))
+
+            # Distribute evenly across samples
+            categorical_combinations = []
+            for i in range(n_samples):
+                # Cycle through categorical combinations
+                cat_idx = i % len(all_cat_combos)
+                categorical_combinations.append(list(all_cat_combos[cat_idx]))
+        else:
+            categorical_combinations = [[] for _ in range(n_samples)]
 
         # Combine numeric and categorical factors in original order
         combinations = []
