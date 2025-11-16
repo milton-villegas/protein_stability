@@ -1,15 +1,13 @@
 # Protein Stability DoE Toolkit
 
-Three small tools that work together to design, execute, and analyse protein stability buffer screens:
+A unified application for designing, executing, and analyzing protein stability buffer screens:
 
-1. **Designer (GUI)** — build full‑factorial/Custom designs and export CSV/XLSX for the robot.  
-   `designer/factorial_designer_gui.pyw`
-2. **Opentrons Protocol** — prepares buffers in 96‑well plates and optionally transfers to a 384‑well plate.  
+1. **Designer Tab** — build full‑factorial/Custom designs and export CSV/XLSX for the robot.
+2. **Opentrons Protocol** — prepares buffers in 96‑well plates and optionally transfers to a 384‑well plate.
    `opentrons/protein_stability_doe.py`
-3. **Analysis (GUI)** — import results, run linear models, and plot main effects/interactions/residuals.  
-   `analysis/doe_analysis_gui.pyw`
+3. **Analysis Tab** — import results, run linear models, Bayesian Optimization, and plot main effects/interactions/residuals.
 
-> Tested on Python 3.10–3.13 (Windows/macOS). Opentrons API Level: **2.20**.
+> Tested on Python 3.8–3.11 (Windows/macOS/Linux). Opentrons API Level: **2.20**.
 
 ---
 
@@ -17,16 +15,28 @@ Three small tools that work together to design, execute, and analyse protein sta
 
 ```
 protein-stability-doe/
-├─ designer/
-│  └─ factorial_designer_gui.pyw
+├─ main.py                      # Main application launcher
+├─ gui/
+│  ├─ main_window.py           # Main GUI window
+│  └─ tabs/
+│     ├─ designer_tab.py       # DoE Designer interface
+│     └─ analysis_tab.py       # Analysis & optimization interface
+├─ core/
+│  ├─ doe_designer.py          # Design generation logic
+│  ├─ doe_analyzer.py          # Statistical analysis
+│  ├─ optimizer.py             # Bayesian optimization
+│  ├─ data_handler.py          # Data loading/preprocessing
+│  ├─ exporter.py              # Results export
+│  ├─ plotter.py               # Visualization
+│  └─ constants.py             # Shared constants
 ├─ opentrons/
-│  └─ protein_stability_doe.py
-├─ analysis/
-│  └─ doe_analysis_gui.pyw
-├─ examples/           # to be added
-├─ requirements-analysis.txt
-├─ requirements-designer.txt
-└─ .gitignore
+│  └─ protein_stability_doe.py # Robot protocol
+├─ tests/                       # Unit tests (pytest)
+├─ utils/                       # Shared utilities
+├─ requirements.txt             # Core dependencies
+├─ requirements-dev.txt         # Testing dependencies
+├─ setup.py                     # Package setup
+└─ .python-version              # Python version constraint
 ```
 
 ---
@@ -46,15 +56,20 @@ python -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
-python -m pip install -r requirements-analysis.txt
-python -m pip install -r requirements-designer.txt
+pip install -r requirements.txt
+# For development/testing:
+pip install -r requirements-dev.txt
 ```
 
-### 2) Designer — build an experimental design
+### 2) Launch the Application
 
 ```bash
-python designer/factorial_designer_gui.pyw
+python main.py
 ```
+
+The application opens with two tabs:
+
+**Designer Tab** — Build experimental designs
 
 - Add factors and levels (units supported: M, mM, µM, nM, %, w/v, v/v).
 - Combination counter shows the number of conditions.
@@ -103,38 +118,46 @@ The protocol:
 - Mixes before transfers and (optionally) maps columns into the 384‑well plate (A/B rows).
 - Prints a summary of plate/well usage at the end of the run.
 
-### 4) Analysis — run statistics & plots
+### 4) Analysis Tab — Run statistics & optimization
 
-```bash
-python analysis/doe_analysis_gui.pyw
-```
+Switch to the **Analysis** tab in the application.
 
-**Dependencies (installed via `requirements-analysis.txt`):**
-- `numpy`, `pandas`, `matplotlib`, `seaborn`, `scipy`, `statsmodels`
-
-Features:
-- Import CSV/XLSX results (expects factor columns + a **Response** column).
-- Main effects and interaction plots.
-- Linear model fits (similar to MATLAB `fitlm` output).
-- Residual diagnostics and exportable figures.
+**Features:**
+- Import CSV/XLSX results (expects factor columns + a **Response** column)
+- Statistical modeling (Linear, Interactions, Quadratic models)
+- Model comparison and automatic selection
+- Main effects, interaction, and residual diagnostic plots
+- Bayesian Optimization for next-batch suggestions
+- Export results and publication-quality figures
 
 ---
 
 ## Troubleshooting
 
-- **Missing `openpyxl` when exporting from Designer** → `pip install -r requirements-designer.txt`
-- **`ModuleNotFoundError: seaborn` (Analysis GUI)** → `pip install -r requirements-analysis.txt`
-- **Pipette volume assertion in Opentrons** → ensure per‑transfer volumes are ≤ pipette max; adjust volumes or split transfers in the CSV/design.
-- **Gen1 vs Gen2 pipettes / alternative labware** → change the model strings in `protein_stability_doe.py` (e.g., pipette names or labware definitions).
-- **CSV parsed but no rows** → verify the first line is headers and that at least one non‑empty row follows (no stray separators).
+- **Missing dependencies** → Run `pip install -r requirements.txt`
+- **GUI doesn't launch** → Ensure Python 3.8+ is installed: `python --version`
+- **Tests failing** → Install dev dependencies: `pip install -r requirements-dev.txt`
+- **Pipette volume assertion in Opentrons** → Ensure per‑transfer volumes are ≤ pipette max; adjust volumes or split transfers in the CSV/design
+- **Gen1 vs Gen2 pipettes / alternative labware** → Change the model strings in `protein_stability_doe.py` (e.g., pipette names or labware definitions)
+- **CSV parsed but no rows** → Verify the first line is headers and that at least one non‑empty row follows (no stray separators)
 
 ---
 
 ## Development notes
 
-- Opentrons protocol declares **API Level 2.20** and was validated on p300 single + multi.  
-- Designer/Analysis are **Tkinter** desktop apps.
-- Recommended Python: **3.10–3.13**.
+- **Architecture**: Modular design with separated GUI, business logic, and utilities
+- **Testing**: 71 unit tests with pytest (23% coverage on core modules: 100% exporter, 99% plotter, 98% data_handler, 51% doe_analyzer)
+- **GUI Framework**: Tkinter (cross-platform desktop application)
+- **Statistical Engine**: statsmodels for regression analysis
+- **Optimization**: Ax-Platform for Bayesian Optimization
+- **Opentrons Protocol**: API Level 2.20, validated on p300 single + multi pipettes
+- **Python Version**: 3.8–3.11 (specified in setup.py and .python-version)
+
+**Running Tests:**
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
 
 ---
 
