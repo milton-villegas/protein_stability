@@ -3,7 +3,6 @@ Data loading and preprocessing
 Extracted from analysis_tab.py
 """
 import pandas as pd
-from typing import List
 from utils.constants import METADATA_COLUMNS
 from utils.sanitization import smart_factor_match
 
