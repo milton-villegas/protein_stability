@@ -1094,8 +1094,14 @@ class BayesianOptimizer:
                         # Try alternative import for older Ax versions
                         from ax.modelbridge import cross_validate
 
-                # Get model for CV
+                # Get adapter for CV
                 adapter = self.ax_client.generation_strategy.adapter
+
+                # Check if adapter supports cross-validation
+                # RandomAdapter (Sobol) doesn't support CV, only BoTorch does
+                if adapter.__class__.__name__ == 'RandomAdapter':
+                    raise ValueError("Need more data for BoTorch model")
+
                 cv_results = cross_validate(adapter)
 
                 # Extract predictions vs observed
@@ -1103,8 +1109,9 @@ class BayesianOptimizer:
                 observed = []
                 predicted = []
                 for cv_pred in cv_results:
-                    obs_val = cv_pred.observed.data[self.response_column][0]
-                    pred_val = cv_pred.predicted.means[self.response_column]
+                    # Access metric values from ObservationData
+                    obs_val = cv_pred.observed.metric_values[self.response_column]
+                    pred_val = cv_pred.predicted.metric_values[self.response_column]
                     observed.append(obs_val)
                     predicted.append(pred_val)
 
@@ -1334,13 +1341,18 @@ class BayesianOptimizer:
                         from ax.modelbridge import cross_validate
 
                 adapter = self.ax_client.generation_strategy.adapter
+
+                # Check if adapter supports cross-validation
+                if adapter.__class__.__name__ == 'RandomAdapter':
+                    raise ValueError("Need more data for BoTorch model")
+
                 cv_results = cross_validate(adapter)
                 observed = []
                 predicted = []
                 # In Ax 1.1.2+, cross_validate returns a list[CVResult]
                 for cv_pred in cv_results:
-                    obs_val = cv_pred.observed.data[self.response_column][0]
-                    pred_val = cv_pred.predicted.means[self.response_column]
+                    obs_val = cv_pred.observed.metric_values[self.response_column]
+                    pred_val = cv_pred.predicted.metric_values[self.response_column]
                     observed.append(obs_val)
                     predicted.append(pred_val)
                 observed = np.array(observed)
