@@ -1,12 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Factorial Designer GUI
-DoE Tool
-Add factors and levels
-Combination counter shows the number of conditions
+Experimental Modeling Suite v0.2.0
+Comprehensive Experimental Design & Modeling Platform
+Creates advanced experiment designs, fits models, checks assumptions,
+and suggests next experiments. Exports to XLSX and Opentrons formats.
 
-Milton F. Villegas - v0.9.4
+Milton F. Villegas
+
+Enhanced with:
+- pyDOE3: Design of experiments for Python (BSD-3-Clause License)
+  https://github.com/relf/pyDOE3
+- SMT: Surrogate Modeling Toolbox for optimized LHS (BSD-3-Clause License)
+  https://github.com/SMTorg/smt
+
+Design Types Available:
+  • Full Factorial - All possible combinations
+  • Latin Hypercube Sampling - Space-filling designs
+  • 2-Level Fractional Factorial - Efficient screening (Resolution III, IV, V)
+  • Plackett-Burman - Ultra-efficient screening for many factors
+  • Central Composite Design - Response surface optimization
+  • Box-Behnken - Response surface without extreme corners
 """
 
 import tkinter as tk
@@ -16,6 +30,7 @@ import csv
 import os
 import re
 from typing import Dict, List, Tuple, Optional
+import numpy as np
 
 # Optional XLSX export
 try:
@@ -25,14 +40,35 @@ try:
 except Exception:
     HAS_OPENPYXL = False
 
+# Optional pyDOE3 for advanced designs
+try:
+    import pyDOE3
+    HAS_PYDOE3 = True
+except Exception:
+    HAS_PYDOE3 = False
+
+# Optional SMT for optimized LHS
+try:
+    from smt.sampling_methods import LHS
+    HAS_SMT = True
+except Exception:
+    HAS_SMT = False
+
 # Available factors with display names
 AVAILABLE_FACTORS = {
     "buffer pH": "Buffer pH",
     "buffer_concentration": "Buffer Conc (mM)",
     "glycerol": "Glycerol (%)",
-    "salt": "Salt (mM)",
+    "nacl": "NaCl (mM)",
+    "kcl": "KCl (mM)",
+    "zinc": "Zinc (mM)",
+    "magnesium": "Magnesium (mM)",
+    "calcium": "Calcium (mM)",
     "dmso": "DMSO (%)",
-    "detergent": "Detergent (%)",
+    "detergent": "Detergent",  # Categorical - accepts names like Tween-20, Triton, etc.
+    "detergent_concentration": "Detergent (%)",
+    "reducing_agent": "Reducing Agent",  # Categorical - accepts names like DTT, TCEP, BME, etc.
+    "reducing_agent_concentration": "Reducing Agent (mM)",
 }
 
 def validate_numeric_input(action, char, entry_value):
@@ -56,6 +92,17 @@ def validate_single_numeric_input(action, char, entry_value):
         return True
 
     return char.isdigit() or char in '.-'
+
+def validate_alphanumeric_input(action, char, entry_value):
+    """Validate alphanumeric input - allows letters, digits, spaces, and common punctuation for names"""
+    # Allow all deletions
+    if action == '0':
+        return True
+    # Allow empty
+    if char == '':
+        return True
+    # Allow letters, digits, spaces, hyphens, parentheses, and commas
+    return char.isalnum() or char in ' -(),.'
 
 class FactorModel:
     """Model with validation for factors and stock concentrations"""
@@ -135,6 +182,13 @@ class FactorEditDialog(tk.Toplevel):
         vcmd = (self.register(validate_numeric_input), '%d', '%S', '%P')  # For levels (allows commas)
         vcmd_stock = (self.register(validate_single_numeric_input), '%d', '%S', '%P')  # For stock (no commas)
         
+        # For detergent and reducing_agent (categorical text), allow alphanumeric input
+        # Buffer pH still uses numeric validation (values 1-14)
+        if factor_name in ["detergent", "reducing_agent"]:
+            vcmd_levels = (self.register(validate_alphanumeric_input), '%d', '%S', '%P')
+        else:
+            vcmd_levels = vcmd
+        
         main_frame = ttk.Frame(self, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
@@ -146,7 +200,7 @@ class FactorEditDialog(tk.Toplevel):
                  font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
         
         # Stock concentration
-        if factor_name != "buffer pH":
+        if factor_name not in ["buffer pH", "detergent", "reducing_agent"]:  # Categorical factors don't need stock
             stock_frame = ttk.LabelFrame(info_frame, text="Stock Concentration (required)", padding=8)
             stock_frame.pack(fill=tk.X, pady=(8, 0))
             
@@ -175,9 +229,18 @@ class FactorEditDialog(tk.Toplevel):
         levels_frame = ttk.LabelFrame(main_frame, text="Levels", padding=8)
         levels_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
         
-        # Hints
+        # Hints - different for categorical vs numeric factors
+        if factor_name == "detergent":
+            hint_text = "Tip: Enter detergent names (e.g., Tween-20, Triton X-100, None)"
+        elif factor_name == "reducing_agent":
+            hint_text = "Tip: Enter reducing agent names (e.g., DTT, TCEP, BME, None)"
+        elif factor_name == "buffer pH":
+            hint_text = "Tip: Enter pH values from 1-14 (e.g., 7.0, 7.5, 8.0)"
+        else:
+            hint_text = "Tip: Use commas to add multiple values at once (e.g., 2, 4, 6, 8)"
+        
         hint_label = ttk.Label(levels_frame, 
-                              text="Tip: Use commas to add multiple values at once (e.g., 2, 4, 6, 8)",
+                              text=hint_text,
                               foreground="gray", font=("TkDefaultFont", 9, "italic"))
         hint_label.pack(anchor="w", pady=(0, 5))
         
@@ -188,243 +251,278 @@ class FactorEditDialog(tk.Toplevel):
         ttk.Label(quick_frame, text="Add level:").pack(side=tk.LEFT)
         self.level_var = tk.StringVar()
         level_entry = ttk.Entry(quick_frame, textvariable=self.level_var, width=20,
-                               validate='key', validatecommand=vcmd)
+                               validate='key', validatecommand=vcmd_levels)
         level_entry.pack(side=tk.LEFT, padx=5)
         level_entry.bind('<Return>', lambda e: self._on_level_entry_enter())
         self.level_entry_widget = level_entry  # Store for key binding
-        ttk.Button(quick_frame, text="Add", command=self._add_level).pack(side=tk.LEFT)
         
-        # Levels listbox
+        ttk.Button(quick_frame, text="Add", 
+                  command=self._add_level).pack(side=tk.LEFT, padx=2)
+        
+        # Listbox
         list_frame = ttk.Frame(levels_frame)
         list_frame.pack(fill=tk.BOTH, expand=True)
         
-        self.levels_listbox = tk.Listbox(list_frame, height=6, exportselection=False)
+        self.levels_listbox = tk.Listbox(list_frame, selectmode=tk.SINGLE, height=10)
         self.levels_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
+        
         # Bind Backspace and Delete keys to remove selected item
-        self.levels_listbox.bind('<BackSpace>', lambda e: self._remove_level())
-        self.levels_listbox.bind('<Delete>', lambda e: self._remove_level())
+        self.levels_listbox.bind('<BackSpace>', lambda e: self._delete_level())
+        self.levels_listbox.bind('<Delete>', lambda e: self._delete_level())
         
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", 
                                  command=self.levels_listbox.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.levels_listbox.configure(yscrollcommand=scrollbar.set)
         
-        # Populate existing levels
+        # Load existing levels
         if existing_levels:
             for level in existing_levels:
                 self.levels_listbox.insert(tk.END, level)
         
-        # Level controls
-        ctrl_frame = ttk.Frame(levels_frame)
-        ctrl_frame.pack(fill=tk.X, pady=(8, 0))
-        ttk.Button(ctrl_frame, text="Remove Selected", 
-                  command=self._remove_level).pack(side=tk.LEFT, padx=2)
-        ttk.Button(ctrl_frame, text="Clear All", 
+        # Buttons
+        btn_frame = ttk.Frame(levels_frame)
+        btn_frame.pack(fill=tk.X, pady=(8, 0))
+        
+        ttk.Button(btn_frame, text="Delete Selected", 
+                  command=self._delete_level).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="Clear All", 
                   command=self._clear_levels).pack(side=tk.LEFT, padx=2)
         
-        # Action buttons
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill=tk.X)
+        # Generate sequence
+        seq_frame = ttk.LabelFrame(main_frame, text="Generate Sequence", padding=8)
+        seq_frame.pack(fill=tk.X, pady=(0, 8))
         
-        ttk.Button(btn_frame, text="Save", command=self._save).pack(side=tk.RIGHT, padx=2)
-        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT, padx=2)
+        seq_input_frame = ttk.Frame(seq_frame)
+        seq_input_frame.pack(fill=tk.X)
         
-        # Bind Enter key to save
-        def on_enter(event):
-
-            if event.widget == self.level_entry_widget or event.widget == self.stock_entry_widget:
+        ttk.Label(seq_input_frame, text="From:").pack(side=tk.LEFT)
+        self.seq_start = tk.StringVar()
+        ttk.Entry(seq_input_frame, textvariable=self.seq_start, width=8,
+                 validate='key', validatecommand=vcmd).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(seq_input_frame, text="To:").pack(side=tk.LEFT, padx=(10, 0))
+        self.seq_end = tk.StringVar()
+        ttk.Entry(seq_input_frame, textvariable=self.seq_end, width=8,
+                 validate='key', validatecommand=vcmd).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(seq_input_frame, text="Step:").pack(side=tk.LEFT, padx=(10, 0))
+        self.seq_step = tk.StringVar()
+        ttk.Entry(seq_input_frame, textvariable=self.seq_step, width=8,
+                 validate='key', validatecommand=vcmd).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(seq_input_frame, text="Generate", 
+                  command=self._generate_sequence).pack(side=tk.LEFT, padx=5)
+        
+        # Final buttons
+        final_btn_frame = ttk.Frame(main_frame)
+        final_btn_frame.pack(fill=tk.X)
+        
+        ttk.Button(final_btn_frame, text="Save", 
+                  command=self._save).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(final_btn_frame, text="Cancel", 
+                  command=self.destroy).pack(side=tk.RIGHT, padx=2)
+        
+        # Bind Enter key globally for the dialog
+        def on_enter_key(event):
+            # If focus is on level entry, add the level
+            if event.widget == self.level_entry_widget:
+                return  # Let _on_level_entry_enter handle it
+            # If focus is on stock entry, don't save yet
+            if hasattr(self, 'stock_entry_widget') and event.widget == self.stock_entry_widget:
                 return
-            self._save()
+            # Otherwise, if we have levels, save the dialog
+            if self.levels_listbox.size() > 0:
+                self._save()
         
-        self.bind('<Return>', on_enter)
+        self.bind('<Return>', on_enter_key)
+        
+        # Set initial focus
+        if self.stock_entry_widget:
+            # Factor has stock concentration - focus there first
+            self.stock_entry_widget.focus()
+        else:
+            # Buffer pH (no stock) - focus on level entry
+            level_entry.focus()
+    
+    def _get_unit_options(self, factor_name: str) -> List[str]:
+        """Get appropriate unit options for factor"""
+        if factor_name in ["buffer_concentration", "nacl", "kcl", "zinc", "magnesium", "calcium", "reducing_agent_concentration"]:
+            return ["mM", "M", "µM"]
+        elif factor_name in ["glycerol", "dmso", "detergent_concentration"]:
+            return ["%", "% v/v", "% w/v"]
+        else:
+            # Custom factor - allow common units
+            return ["mM", "%", "M", "µM", "mg/mL", "µg/mL", "U/mL"]
     
     def _on_level_entry_enter(self):
-        """Smart Enter key behavior for level entry:
-        - If entry has text: add it as a level
-        - If entry is empty and levels exist: save the dialog
-        """
+        """Handle Enter key in level entry - add level or save if empty"""
         level_text = self.level_var.get().strip()
         
         if level_text:
-
+            # Has text - add the level
             self._add_level()
         else:
-
+            # Empty box - if we have levels, save the dialog
             if self.levels_listbox.size() > 0:
                 self._save()
-    
+        
     def _add_level(self):
-        level_input = self.level_var.get().strip()
-        if level_input:
-
-            if ',' in level_input:
-                # Split by comma and add each level separately
-                new_levels = [l.strip() for l in level_input.split(',') if l.strip()]
-                existing = list(self.levels_listbox.get(0, tk.END))
-                
-                for level in new_levels:
-                    # Parse to extract just the number (removes units like "mM", "%", etc.)
-                    parsed_value = self._parse_numeric_value(level)
-                    if parsed_value is not None:
-                        level_clean = str(parsed_value)
-                    else:
-                        level_clean = level
-                    
-                    if level_clean not in existing:
-                        self.levels_listbox.insert(tk.END, level_clean)
-                        existing.append(level_clean)
-                
-                self.level_var.set("")
-            else:
-
-                parsed_value = self._parse_numeric_value(level_input)
+        level_text = self.level_var.get().strip()
+        if not level_text:
+            return
+        
+        # Check for comma-separated values
+        if ',' in level_text:
+            # Split and add multiple
+            parts = [p.strip() for p in level_text.split(',') if p.strip()]
+            for part in parts:
+                # Parse and validate each part
+                parsed_value = self._parse_numeric_value(part)
                 if parsed_value is not None:
+                    # Validate range (pH, percentage, etc.)
+                    is_valid, error_msg = self._validate_range(parsed_value, self.factor_name)
+                    if not is_valid:
+                        messagebox.showerror("Invalid Value", error_msg)
+                        return
                     level_clean = str(parsed_value)
                 else:
-                    level_clean = level_input
+                    level_clean = part
                 
-                existing = self.levels_listbox.get(0, tk.END)
-                if level_clean not in existing:
+                if level_clean not in self.levels_listbox.get(0, tk.END):
                     self.levels_listbox.insert(tk.END, level_clean)
-                    self.level_var.set("")
-                else:
-                    messagebox.showwarning("Duplicate", f"Level '{level_clean}' already exists.")
+        else:
+            # Single value - parse and validate
+            parsed_value = self._parse_numeric_value(level_text)
+            if parsed_value is not None:
+                # Validate range (pH, percentage, etc.)
+                is_valid, error_msg = self._validate_range(parsed_value, self.factor_name)
+                if not is_valid:
+                    messagebox.showerror("Invalid Value", error_msg)
+                    return
+                level_clean = str(parsed_value)
+            else:
+                level_clean = level_text
+            
+            if level_clean not in self.levels_listbox.get(0, tk.END):
+                self.levels_listbox.insert(tk.END, level_clean)
+        
+        # Clear entry and keep focus
+        self.level_var.set("")
+        self.level_entry_widget.focus()
     
-    def _remove_level(self):
+    def _delete_level(self):
         selection = self.levels_listbox.curselection()
         if selection:
-            self.levels_listbox.delete(selection[0])
+            index = selection[0]
+            self.levels_listbox.delete(index)
+            
+            # Auto-select the next available item for continuous deletion
+            size = self.levels_listbox.size()
+            if size > 0:
+                # If we deleted the last item, select the new last item
+                if index >= size:
+                    self.levels_listbox.selection_set(size - 1)
+                else:
+                    # Select the item that took the deleted item's place
+                    self.levels_listbox.selection_set(index)
     
     def _clear_levels(self):
-        if messagebox.askyesno("Confirm", "Clear all levels?"):
-            self.levels_listbox.delete(0, tk.END)
-    
-    def _sort_levels(self):
-        items = list(self.levels_listbox.get(0, tk.END))
-        try:
-            # Try numeric sort
-            sorted_items = sorted(items, key=lambda x: float(x))
-        except ValueError:
-
-            sorted_items = sorted(items)
-        
         self.levels_listbox.delete(0, tk.END)
-        for item in sorted_items:
-            self.levels_listbox.insert(tk.END, item)
     
-    def _get_unit_options(self, factor_name: str) -> List[str]:
-        """Get appropriate unit options based on factor name"""
-        factor_lower = factor_name.lower()
-        
-
-        if any(x in factor_lower for x in ['%', 'percent', 'glycerol', 'dmso', 'detergent', 'tween']):
-            return ['w/v', 'v/v']
-        
-
-        if 'ph' in factor_lower:
-            return ['pH units']
-        
-
-        return ['mM', 'µM', 'M', 'nM']
-    
-    def _convert_to_base_unit(self, value: float, unit: str, factor_name: str) -> float:
-        """Convert value to base unit (mM for concentrations, % for percentages)"""
-        factor_lower = factor_name.lower()
-        
-
-        if any(x in factor_lower for x in ['%', 'percent', 'glycerol', 'dmso', 'detergent', 'tween']):
-            if unit in ['w/v', 'v/v']:
-                return value
-            return value
-        
-
-        if 'ph' in factor_lower:
-            return value
-        
-        # For concentration factors, convert everything to mM
-        conversions = {
-            'M': 1000,         # 1 M = 1000 mM
-            'mM': 1,           # base unit
-            'µM': 0.001,       # 1 µM = 0.001 mM
-            'nM': 0.000001,    # 1 nM = 0.000001 mM
-        }
-        
-        return value * conversions.get(unit, 1)
-    
-    def _validate_range(self, value: float, factor_name: str) -> Tuple[bool, str]:
-        """Validate that value is within acceptable range for the factor type"""
-        factor_lower = factor_name.lower()
-        
-        # pH validation: 0-14
-        if 'ph' in factor_lower and 'buffer' not in factor_lower:
-            if value < 0 or value > 14:
-                return False, f"pH must be between 0 and 14.\n\nYou entered: {value}\n\nPlease enter a realistic pH value."
-        
-        # Percentage validation: 0-100
-        if any(x in factor_lower for x in ['%', 'percent', 'glycerol', 'dmso', 'detergent', 'tween']):
-            if value < 0 or value > 100:
-                return False, f"Percentage must be between 0 and 100%. You entered: {value}%"
-        
-        # General validation: no negative concentrations
-        if value < 0:
-            return False, f"Concentration cannot be negative. You entered: {value}"
-        
-        return True, ""
-    
-    def _parse_numeric_value(self, text: str) -> Optional[float]:
-        """Extract numeric value from text, ignoring units and other characters"""
-
-        cleaned = re.sub(r'[a-zA-Z/%°µ\s]+', '', text)
+    def _generate_sequence(self):
         try:
-            return float(cleaned)
+            start = float(self.seq_start.get())
+            end = float(self.seq_end.get())
+            step = float(self.seq_step.get())
+            
+            if step <= 0:
+                messagebox.showerror("Invalid Step", "Step must be positive.")
+                return
+            
+            if start >= end:
+                messagebox.showerror("Invalid Range", "Start must be less than End.")
+                return
+            
+            # Generate sequence
+            current = start
+            while current <= end:
+                level_str = str(current) if current % 1 != 0 else str(int(current))
+                if level_str not in self.levels_listbox.get(0, tk.END):
+                    self.levels_listbox.insert(tk.END, level_str)
+                current += step
+        
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter valid numeric values.")
+    
+    def _try_save(self):
+        """Try to save - called by Enter key"""
+        self._save()
+    
+    def _parse_numeric_value(self, value_str: str) -> Optional[float]:
+        """Parse a numeric value, handling various formats"""
+        try:
+            return float(value_str)
         except ValueError:
             return None
     
-    def _try_save(self):
-        """Try to save - called by Enter key. Only saves if we have levels."""
-        levels = list(self.levels_listbox.get(0, tk.END))
-        if levels:
-
-            self._save()
-
+    def _validate_range(self, value: float, factor_name: str) -> Tuple[bool, str]:
+        """Validate that value is in reasonable range for factor"""
+        # pH validation: 1-14
+        if factor_name == "buffer pH":
+            if value < 1 or value > 14:
+                return False, (f"Invalid pH value: {value}\n\n"
+                             f"pH must be between 1.0 and 14.0\n"
+                             f"(Typical range: 2-12 for most buffers)")
+        
+        # Percentage validation: 0-100
+        elif factor_name in ["glycerol", "dmso", "detergent_concentration"]:
+            if value < 0 or value > 100:
+                return False, (f"Invalid percentage: {value}%\n\n"
+                             f"Percentage must be between 0 and 100%")
+        
+        # Concentration validation: 0-10000 mM
+        elif factor_name in ["buffer_concentration", "nacl", "kcl", "zinc", "magnesium", "calcium", "reducing_agent_concentration"]:
+            if value < 0:
+                return False, f"Concentration cannot be negative: {value}"
+            if value > 10000:
+                return False, (f"Very high concentration: {value} mM\n\n"
+                             f"Please verify this is correct.\n"
+                             f"(Typical range: 10-1000 mM)")
+        
+        return True, ""
     
     def _save(self):
+        # Get levels
         levels = list(self.levels_listbox.get(0, tk.END))
         if not levels:
-            messagebox.showerror("Error", "At least one level is required.")
+            messagebox.showerror("No Levels", "Please add at least one level.")
             return
         
-        # MANDATORY stock concentration for all except buffer pH
+        # Get stock concentration only for non-categorical factors
         stock = None
-        if hasattr(self, 'stock_var'):
-            stock_str = self.stock_var.get().strip()
-            if not stock_str:
-                messagebox.showerror("Stock Concentration Required", 
-                    "You must enter a stock concentration.\n\n"
-                    "This is required to calculate volumes for the Opentrons.")
+        if self.factor_name not in ["buffer pH", "detergent", "reducing_agent"]:
+            stock_text = self.stock_var.get().strip()
+            if not stock_text:
+                messagebox.showerror("Missing Stock Concentration", 
+                    "Stock concentration is required for this factor.")
                 return
             
-            # Parse numeric value
-            stock_value = self._parse_numeric_value(stock_str)
-            if stock_value is None:
-                try:
-                    stock_value = float(stock_str)
-                except ValueError:
-                    messagebox.showerror("Error", 
-                        f"Invalid stock concentration: '{stock_str}'\n\n"
-                        f"Please enter a numeric value.")
+            try:
+                stock_base = float(stock_text)
+                if stock_base <= 0:
+                    messagebox.showerror("Invalid Stock", 
+                        "Stock concentration must be positive.")
                     return
-            
-            if stock_value <= 0:
-                messagebox.showerror("Error", "Stock concentration must be positive.")
+            except ValueError:
+                messagebox.showerror("Invalid Stock", 
+                    "Stock concentration must be a number.")
                 return
             
-            # Get selected unit and convert to base unit
+            # Get unit and convert to base unit if needed
             unit = self.unit_var.get()
-            stock_base = self._convert_to_base_unit(stock_value, unit, self.factor_name)
             
-            # Validate range
+            # Validate based on expected range
             is_valid, error_msg = self._validate_range(stock_base, self.factor_name)
             if not is_valid:
                 messagebox.showerror("Invalid Range", error_msg)
@@ -477,9 +575,9 @@ class FactorEditDialog(tk.Toplevel):
 class FactorialDesigner(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Factorial Designer v0.9.4")
-        self.geometry("1000x600")
-        self.minsize(900, 550)
+        self.title("Experimental Modeling Suite v0.2.0")
+        self.geometry("1000x700")
+        self.minsize(900, 650)
         
         self.model = FactorModel()
         self._build_ui()
@@ -534,15 +632,56 @@ class FactorialDesigner(tk.Tk):
         scrollbar.grid(row=1, column=1, sticky="ns")
         self.available_listbox.configure(yscrollcommand=scrollbar.set)
         
-        # Populate available factors
-        for key, display in AVAILABLE_FACTORS.items():
-            self.available_listbox.insert(tk.END, display)
+        # Populate available factors - organized by category
+        # Define categories and their factors in order
+        factor_categories = [
+            ("--- BUFFER SYSTEM ---", [
+                "buffer pH",
+                "buffer_concentration"
+            ]),
+            ("--- DETERGENTS ---", [
+                "detergent",
+                "detergent_concentration"
+            ]),
+            ("--- REDUCING AGENTS ---", [
+                "reducing_agent",
+                "reducing_agent_concentration"
+            ]),
+            ("--- SALTS ---", [
+                "nacl",
+                "kcl"
+            ]),
+            ("--- METALS ---", [
+                "zinc",
+                "magnesium",
+                "calcium"
+            ]),
+            ("--- ADDITIVES ---", [
+                "glycerol",
+                "dmso"
+            ])
+        ]
+        
+        # Populate listbox with categories
+        for category_name, factor_keys in factor_categories:
+            # Add category header (disabled/unselectable)
+            self.available_listbox.insert(tk.END, category_name)
+            # Make category header visually distinct (we'll handle selection later)
+            
+            # Add factors in this category
+            for key in factor_keys:
+                display_name = AVAILABLE_FACTORS.get(key, key)
+                self.available_listbox.insert(tk.END, f"  {display_name}")
+            
+            # Add empty line for spacing between categories
+            self.available_listbox.insert(tk.END, "")
         
         # Right panel: Current Design
         right_panel = ttk.Frame(main_container)
         right_panel.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         right_panel.columnconfigure(0, weight=1)
         right_panel.rowconfigure(0, weight=1)
+        right_panel.rowconfigure(1, weight=0)
         
         # Design table
         design_frame = ttk.LabelFrame(right_panel, text="Current Design", padding=8)
@@ -553,7 +692,7 @@ class FactorialDesigner(tk.Tk):
         # Treeview for factors
         self.tree = ttk.Treeview(design_frame, 
                                 columns=("factor", "levels", "count", "stock"),
-                                show="headings", height=12, selectmode="browse")
+                                show="headings", height=10, selectmode="browse")
         self.tree.heading("factor", text="Factor")
         self.tree.heading("levels", text="Levels")
         self.tree.heading("count", text="# Levels")
@@ -583,6 +722,129 @@ class FactorialDesigner(tk.Tk):
                   command=self._edit_factor).pack(side=tk.LEFT, padx=2)
         ttk.Button(ctrl_frame, text="Delete",
                   command=self._delete_factor).pack(side=tk.LEFT, padx=2)
+        
+        # ========== NEW: Design Type Selection ==========
+        design_type_frame = ttk.LabelFrame(right_panel, text="Design Type", padding=8)
+        design_type_frame.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        design_type_frame.columnconfigure(0, weight=1)
+        
+        # Dropdown for design type
+        dropdown_frame = ttk.Frame(design_type_frame)
+        dropdown_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        ttk.Label(dropdown_frame, text="Select Design:").pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.design_type_var = tk.StringVar(value="full_factorial")
+        
+        design_options = [
+            ("full_factorial", "Full Factorial (all combinations)"),
+            ("lhs", "Latin Hypercube (space-filling)"),
+            ("fractional", "2-Level Fractional Factorial (screening)"),
+            ("plackett_burman", "Plackett-Burman (efficient screening)"),
+            ("central_composite", "Central Composite (optimization)"),
+            ("box_behnken", "Box-Behnken (optimization)")
+        ]
+        
+        self.design_dropdown = ttk.Combobox(dropdown_frame, 
+                                           textvariable=self.design_type_var,
+                                           values=[desc for _, desc in design_options],
+                                           state="readonly", width=40)
+        self.design_dropdown.pack(side=tk.LEFT)
+        self.design_dropdown.current(0)
+        self.design_dropdown.bind('<<ComboboxSelected>>', lambda e: self._on_design_type_changed())
+        
+        # Map display names back to internal values
+        self.design_map = {desc: val for val, desc in design_options}
+        self.design_map_reverse = {val: desc for val, desc in design_options}
+        
+        if not HAS_PYDOE3:
+            warning_label = ttk.Label(dropdown_frame, text="⚠ pyDOE3 required for advanced designs", 
+                                     foreground="red", font=("TkDefaultFont", 8))
+            warning_label.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Container for design-specific controls
+        self.design_controls_frame = ttk.Frame(design_type_frame)
+        self.design_controls_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        # === LHS-specific controls ===
+        self.lhs_controls = ttk.Frame(self.design_controls_frame)
+        
+        sample_frame = ttk.Frame(self.lhs_controls)
+        sample_frame.pack(fill=tk.X)
+        
+        ttk.Label(sample_frame, text="Sample Size:").pack(side=tk.LEFT, padx=(0, 5))
+        self.sample_size_var = tk.IntVar(value=96)
+        vcmd = (self.register(validate_single_numeric_input), '%d', '%S', '%P')
+        ttk.Entry(sample_frame, textvariable=self.sample_size_var, 
+                 width=8, validate='key', validatecommand=vcmd).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(sample_frame, text="(8-384)", 
+                 font=("TkDefaultFont", 8, "italic")).pack(side=tk.LEFT)
+        
+        optimize_frame = ttk.Frame(self.lhs_controls)
+        optimize_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        self.optimize_lhs_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(optimize_frame, 
+                       text="Optimize LHS (SMT - better space filling)",
+                       variable=self.optimize_lhs_var).pack(side=tk.LEFT)
+        
+        if not HAS_SMT:
+            ttk.Label(optimize_frame, text="(requires SMT)", 
+                     foreground="orange", font=("TkDefaultFont", 8)).pack(side=tk.LEFT, padx=5)
+        
+        # === Fractional Factorial controls ===
+        self.fractional_controls = ttk.Frame(self.design_controls_frame)
+        
+        resolution_frame = ttk.Frame(self.fractional_controls)
+        resolution_frame.pack(fill=tk.X)
+        
+        ttk.Label(resolution_frame, text="Resolution:").pack(side=tk.LEFT, padx=(0, 5))
+        self.resolution_var = tk.StringVar(value="IV")
+        resolution_combo = ttk.Combobox(resolution_frame, textvariable=self.resolution_var,
+                                       values=["III", "IV", "V"], state="readonly", width=8)
+        resolution_combo.pack(side=tk.LEFT, padx=(0, 10))
+        resolution_combo.current(1)
+        
+        ttk.Label(resolution_frame, text="(III=screening, IV=interactions, V=full)", 
+                 font=("TkDefaultFont", 8, "italic"), foreground="gray").pack(side=tk.LEFT)
+        
+        # === Plackett-Burman controls ===
+        self.pb_controls = ttk.Frame(self.design_controls_frame)
+        
+        pb_info = ttk.Label(self.pb_controls, 
+                           text="Automatically determines optimal run count based on number of factors",
+                           font=("TkDefaultFont", 8, "italic"), foreground="gray")
+        pb_info.pack(anchor="w")
+        
+        # === Central Composite controls ===
+        self.ccd_controls = ttk.Frame(self.design_controls_frame)
+        
+        alpha_frame = ttk.Frame(self.ccd_controls)
+        alpha_frame.pack(fill=tk.X)
+        
+        ttk.Label(alpha_frame, text="Design Type:").pack(side=tk.LEFT, padx=(0, 5))
+        self.ccd_type_var = tk.StringVar(value="faced")
+        ccd_combo = ttk.Combobox(alpha_frame, textvariable=self.ccd_type_var,
+                                values=["faced", "inscribed", "circumscribed"], 
+                                state="readonly", width=15)
+        ccd_combo.pack(side=tk.LEFT, padx=(0, 10))
+        ccd_combo.current(0)
+        
+        ttk.Label(alpha_frame, text="(faced=practical, inscribed=scaled, circumscribed=extended)", 
+                 font=("TkDefaultFont", 8, "italic"), foreground="gray").pack(side=tk.LEFT)
+        
+        # === Box-Behnken controls ===
+        self.bb_controls = ttk.Frame(self.design_controls_frame)
+        
+        bb_info = ttk.Label(self.bb_controls, 
+                           text="Requires 3+ factors. Does not test extreme corner combinations.",
+                           font=("TkDefaultFont", 8, "italic"), foreground="gray")
+        bb_info.pack(anchor="w")
+        
+        # Hide all controls initially
+        self._hide_all_design_controls()
+        
+        # ========== END NEW SECTION ==========
         
         # Bottom panel: Export Settings
         bottom_panel = ttk.LabelFrame(main_container, text="Export", padding=8)
@@ -616,6 +878,41 @@ class FactorialDesigner(tk.Tk):
         ttk.Button(bottom_panel, text="Export Design",
                   command=self._export_both).grid(row=1, column=0, columnspan=3, pady=(8, 0))
     
+    def _hide_all_design_controls(self):
+        """Hide all design-specific control frames"""
+        self.lhs_controls.pack_forget()
+        self.fractional_controls.pack_forget()
+        self.pb_controls.pack_forget()
+        self.ccd_controls.pack_forget()
+        self.bb_controls.pack_forget()
+    
+    def _on_design_type_changed(self):
+        """Handle design type dropdown change"""
+        # Get the internal value from the display text
+        display_text = self.design_type_var.get()
+        if display_text in self.design_map:
+            design_type = self.design_map[display_text]
+        else:
+            design_type = display_text
+        
+        # Hide all controls first
+        self._hide_all_design_controls()
+        
+        # Show relevant controls
+        if design_type == "lhs":
+            self.lhs_controls.pack(fill=tk.X, pady=(5, 0))
+        elif design_type == "fractional":
+            self.fractional_controls.pack(fill=tk.X, pady=(5, 0))
+        elif design_type == "plackett_burman":
+            self.pb_controls.pack(fill=tk.X, pady=(5, 0))
+        elif design_type == "central_composite":
+            self.ccd_controls.pack(fill=tk.X, pady=(5, 0))
+        elif design_type == "box_behnken":
+            self.bb_controls.pack(fill=tk.X, pady=(5, 0))
+        
+        # Update combination count
+        self._update_display()
+    
     def _add_custom_factor(self):
         """Add a completely custom factor (e.g., KCl, MgCl2, etc.) with units"""
         # Ask for custom factor name with units
@@ -630,193 +927,278 @@ class FactorialDesigner(tk.Tk):
         frame = ttk.Frame(dialog, padding=20)
         frame.pack(fill=tk.BOTH, expand=True)
         
-        ttk.Label(frame, text="Enter custom factor name:", 
-                 font=("TkDefaultFont", 10, "bold")).pack(anchor="w", pady=(0, 10))
+        ttk.Label(frame, text="Enter factor name:", 
+                 font=("TkDefaultFont", 10, "bold")).pack(anchor="w", pady=(0, 5))
         
-        ttk.Label(frame, text="Examples: KCl, MgCl2, DTT, EDTA, Tween-20").pack(anchor="w", pady=(0, 5))
-        
-        ttk.Label(frame, text="Note: Units will be selected in the next step", 
-                 foreground="gray", font=("TkDefaultFont", 9, "italic")).pack(anchor="w", pady=(0, 10))
+        ttk.Label(frame, text="Examples: KCl, MgCl₂, Enzyme X, Temperature, etc.",
+                 font=("TkDefaultFont", 9, "italic"),
+                 foreground="gray").pack(anchor="w", pady=(0, 10))
         
         name_var = tk.StringVar()
-        name_entry = ttk.Entry(frame, textvariable=name_var, width=35)
+        name_entry = ttk.Entry(frame, textvariable=name_var, font=("TkDefaultFont", 11))
         name_entry.pack(fill=tk.X, pady=(0, 15))
-        name_entry.focus_set()
+        name_entry.focus()
         
-        def on_ok():
+        def save():
             name = name_var.get().strip()
             if not name:
-                messagebox.showwarning("Invalid Name", "Please enter a factor name.")
+                messagebox.showerror("Invalid Name", "Please enter a factor name.")
+                return
+            
+            # Check if already exists
+            factors = self.model.get_factors()
+            if name in factors:
+                messagebox.showerror("Duplicate", f"Factor '{name}' already exists.")
                 return
             
             result["name"] = name
             dialog.destroy()
         
-        def on_cancel():
-            dialog.destroy()
-        
-        name_entry.bind('<Return>', lambda e: on_ok())
+        name_entry.bind('<Return>', lambda e: save())
         
         btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.RIGHT, padx=2)
-        ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.RIGHT, padx=2)
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(20, 0))
+        
+        ttk.Button(btn_frame, text="Cancel", 
+                  command=dialog.destroy).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(btn_frame, text="Continue", 
+                  command=save).pack(side=tk.RIGHT, padx=2)
         
         self.wait_window(dialog)
         
+        # If a name was provided, open factor editor
         if result["name"]:
-            custom_name = result["name"]
+            factor_name = result["name"]
+            editor = FactorEditDialog(self, factor_name)
+            self.wait_window(editor)
             
-
-            factors = self.model.get_factors()
-            if custom_name in factors:
-                messagebox.showwarning("Duplicate", f"Factor '{custom_name}' already exists.")
-                return
-            
-
-            editor_dialog = FactorEditDialog(self, custom_name)
-            self.wait_window(editor_dialog)
-            
-            if editor_dialog.result_levels:
-                self.model.add_factor(custom_name, editor_dialog.result_levels, editor_dialog.result_stock)
-                self._update_display()
+            if editor.result_levels:
+                try:
+                    self.model.add_factor(factor_name, editor.result_levels, editor.result_stock)
+                    self._update_display()
+                except ValueError as e:
+                    messagebox.showerror("Error", str(e))
     
-    def _add_new_factor(self):
-        """Show factor selection and add dialog (from predefined list)"""
+    def _quick_add_factor(self):
+        """Quick add from available factors"""
         selection = self.available_listbox.curselection()
         if not selection:
-            messagebox.showinfo("Select Factor", "Please select a factor from the list or double-click it.")
             return
         
         idx = selection[0]
-        factor_key = list(AVAILABLE_FACTORS.keys())[idx]
+        display_name = self.available_listbox.get(idx)
         
-
-        if factor_key in self.model.get_factors():
-            messagebox.showwarning("Duplicate", f"Factor '{AVAILABLE_FACTORS[factor_key]}' already exists.")
+        # Skip category headers (start with ---) and empty lines
+        if display_name.startswith("---") or display_name.strip() == "":
             return
         
-
-        dialog = FactorEditDialog(self, factor_key)
-        self.wait_window(dialog)
+        # Remove leading spaces from indented items
+        display_name = display_name.strip()
         
-        if dialog.result_levels:
-            self.model.add_factor(factor_key, dialog.result_levels, dialog.result_stock)
-            self._update_display()
-    
-    def _quick_add_factor(self):
-        """Quick add from double-click"""
-        self._add_new_factor()
-    
-    def _edit_factor(self):
-        """Edit selected factor"""
-        selection = self.tree.selection()
-        if not selection:
-            messagebox.showinfo("Select Factor", "Please select a factor to edit.")
-            return
-        
-        item = selection[0]
-        factor_display = self.tree.item(item)['values'][0]
-        
-
-        internal_key = None
-        for key in self.model.get_factors().keys():
-            if AVAILABLE_FACTORS.get(key, key) == factor_display:
-                internal_key = key
+        # Find the key
+        factor_key = None
+        for key, disp in AVAILABLE_FACTORS.items():
+            if disp == display_name:
+                factor_key = key
                 break
         
-        if not internal_key:
+        if not factor_key:
             return
         
-
-        existing_levels = self.model.get_factors()[internal_key]
-        existing_stock = self.model.get_stock_conc(internal_key)
+        # Check if already added
+        factors = self.model.get_factors()
+        if factor_key in factors:
+            messagebox.showinfo("Already Added", 
+                f"Factor '{display_name}' is already in your design.")
+            return
         
-
-        dialog = FactorEditDialog(self, internal_key, existing_levels, existing_stock)
-        self.wait_window(dialog)
+        # Open editor
+        editor = FactorEditDialog(self, factor_key)
+        self.wait_window(editor)
         
-        if dialog.result_levels:
-            self.model.update_factor(internal_key, dialog.result_levels, dialog.result_stock)
-            self._update_display()
+        if editor.result_levels:
+            try:
+                self.model.add_factor(factor_key, editor.result_levels, editor.result_stock)
+                self._update_display()
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
     
-    def _delete_factor(self):
-        """Delete selected factor"""
+    def _edit_factor(self):
         selection = self.tree.selection()
         if not selection:
-            messagebox.showinfo("Select Factor", "Please select a factor to delete.")
+            messagebox.showinfo("No Selection", "Please select a factor to edit.")
             return
         
         item = selection[0]
-        factor_display = self.tree.item(item)['values'][0]
+        factor_name = self.tree.item(item, "values")[0]
         
-        if messagebox.askyesno("Confirm", f"Delete factor '{factor_display}'?"):
-
-            for key in self.model.get_factors().keys():
-                if AVAILABLE_FACTORS.get(key, key) == factor_display:
-                    self.model.remove_factor(key)
-                    break
+        # Find original key
+        factor_key = None
+        for key, disp in AVAILABLE_FACTORS.items():
+            if disp == factor_name:
+                factor_key = key
+                break
+        
+        if not factor_key:
+            # Custom factor
+            factor_key = factor_name
+        
+        factors = self.model.get_factors()
+        if factor_key not in factors:
+            return
+        
+        existing_levels = factors[factor_key]
+        stock_conc = self.model.get_stock_conc(factor_key)
+        
+        editor = FactorEditDialog(self, factor_key, existing_levels, stock_conc)
+        self.wait_window(editor)
+        
+        if editor.result_levels:
+            try:
+                self.model.update_factor(factor_key, editor.result_levels, editor.result_stock)
+                self._update_display()
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
+    
+    def _delete_factor(self):
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showinfo("No Selection", "Please select a factor to delete.")
+            return
+        
+        item = selection[0]
+        factor_name = self.tree.item(item, "values")[0]
+        
+        # Find original key
+        factor_key = None
+        for key, disp in AVAILABLE_FACTORS.items():
+            if disp == factor_name:
+                factor_key = key
+                break
+        
+        if not factor_key:
+            factor_key = factor_name
+        
+        result = messagebox.askyesno("Confirm Delete", 
+            f"Are you sure you want to delete '{factor_name}'?")
+        
+        if result:
+            self.model.remove_factor(factor_key)
             self._update_display()
     
     def _clear_all(self):
-        """Clear all factors"""
-        if messagebox.askyesno("Confirm", "Clear all factors?"):
+        if not self.model.get_factors():
+            messagebox.showinfo("No Factors", "There are no factors to clear.")
+            return
+        
+        result = messagebox.askyesno("Confirm Clear All", 
+            "Are you sure you want to clear all factors?")
+        
+        if result:
             self.model.clear()
             self._update_display()
     
     def _update_display(self):
-        """Update the factors table and stats - REAL-TIME"""
-
+        """Update the treeview and combination counter"""
+        # Clear tree
         for item in self.tree.get_children():
             self.tree.delete(item)
         
-
+        # Populate tree
         factors = self.model.get_factors()
-        for key, levels in factors.items():
-            display_name = AVAILABLE_FACTORS.get(key, key)
-            levels_preview = ", ".join(levels[:5])
+        for factor_key, levels in factors.items():
+            display_name = AVAILABLE_FACTORS.get(factor_key, factor_key)
+            levels_str = ", ".join(str(l) for l in levels[:5])
             if len(levels) > 5:
-                levels_preview += "..."
+                levels_str += "..."
             
-            stock = self.model.get_stock_conc(key)
-            stock_display = f"{stock}" if stock else "—"
+            count = len(levels)
+            stock = self.model.get_stock_conc(factor_key)
+            stock_str = f"{stock}" if stock else "N/A"
             
-
-            num_levels = len(levels)
+            self.tree.insert("", tk.END, values=(display_name, levels_str, count, stock_str))
+        
+        # Update combination counter based on design type
+        display_text = self.design_type_var.get()
+        if display_text in self.design_map:
+            design_type = self.design_map[display_text]
+        else:
+            design_type = display_text
+        
+        if not factors:
+            self.combo_var.set("0")
+            self.plates_var.set("0")
+            return
+        
+        n_factors = len(factors)
+        
+        try:
+            if design_type == "full_factorial":
+                total = self.model.total_combinations()
+                self.combo_var.set(str(total))
             
-            self.tree.insert("", tk.END, values=(display_name, levels_preview, 
-                                                num_levels, stock_display))
+            elif design_type == "lhs":
+                sample_size = self.sample_size_var.get()
+                self.combo_var.set(f"{sample_size} (LHS)")
+                total = sample_size
+            
+            elif design_type == "fractional":
+                resolution = self.resolution_var.get()
+                if resolution == "III":
+                    runs = 2 ** (n_factors - max(1, n_factors - 4))
+                elif resolution == "IV":
+                    runs = 2 ** (n_factors - max(0, n_factors - 5))
+                else:  # V
+                    runs = 2 ** (n_factors - max(0, n_factors - 6))
+                self.combo_var.set(f"~{runs} (Frac)")
+                total = runs
+            
+            elif design_type == "plackett_burman":
+                runs = ((n_factors // 4) + 1) * 4
+                if runs < 12:
+                    runs = 12
+                self.combo_var.set(f"~{runs} (PB)")
+                total = runs
+            
+            elif design_type == "central_composite":
+                runs = (2 ** n_factors) + (2 * n_factors) + 4
+                self.combo_var.set(f"~{runs} (CCD)")
+                total = runs
+            
+            elif design_type == "box_behnken":
+                if n_factors >= 3:
+                    runs = 2 * n_factors * (n_factors - 1) + 3
+                    self.combo_var.set(f"~{runs} (BB)")
+                    total = runs
+                else:
+                    self.combo_var.set("N/A (need 3+)")
+                    total = 0
+            
+            else:
+                total = 0
+                self.combo_var.set("?")
+            
+            # Calculate plates
+            if total > 0:
+                plates = (total + 95) // 96
+                self.plates_var.set(str(plates))
+            else:
+                self.plates_var.set("0")
         
-
-        total = self.model.total_combinations()
-        self.combo_var.set(str(total))
-        
-        plates = (total + 95) // 96 if total > 0 else 0
-        self.plates_var.set(str(plates))
-        
-        # Warn if too many
-        if total > 384:
-            self.combo_var.set(f"{total} ⚠️")
-            self.plates_var.set(f"{plates} ⚠️")
-        
-        self.update_idletasks()
+        except Exception:
+            self.combo_var.set("?")
+            self.plates_var.set("?")
     
-    def _generate_well_position(self, index: int) -> Tuple[int, str]:
-        """Generate plate number and well position (A1-H12)
-        Fills column-wise: A1, B1, C1...H1, A2, B2...
-        """
-        plate_number = (index // 96) + 1
-        position_in_plate = index % 96
+    def _generate_well_position(self, idx: int) -> Tuple[int, str]:
+        """Generate 96-well plate and well position from index"""
+        plate_num = (idx // 96) + 1
+        well_idx = idx % 96
         
-        # Fill down columns first (A1, B1, C1... H1, then A2, B2...)
-        row = position_in_plate % 8  # 0-7 for A-H
-        col = position_in_plate // 8  # 0-11 for 1-12
+        row = chr(ord('A') + (well_idx // 12))
+        col = (well_idx % 12) + 1
+        well_pos = f"{row}{col}"
         
-        row_letter = chr(ord('A') + row)
-        col_number = col + 1
-        well = f"{row_letter}{col_number}"
-        
-        return plate_number, well
+        return plate_num, well_pos
     
     def _convert_96_to_384_well(self, plate_num: int, well_96: str) -> str:
         """Convert 96-well to 384-well position
@@ -850,8 +1232,312 @@ class FactorialDesigner(tk.Tk):
         
         return f"{row_384}{col_384}"
     
+    def _generate_lhs_design(self, factors: Dict[str, List[str]], n_samples: int) -> List[Tuple]:
+        """Generate Latin Hypercube Sampling design using pyDOE3 or SMT
+        
+        Args:
+            factors: Dictionary of factor names to level lists
+            n_samples: Number of samples to generate
+        
+        Returns:
+            List of tuples representing combinations
+        """
+        factor_names = list(factors.keys())
+        n_factors = len(factor_names)
+        
+        # Check if user wants optimized LHS with SMT
+        use_smt = self.optimize_lhs_var.get() and HAS_SMT
+        
+        if use_smt:
+            # Use SMT for optimized LHS with maximin criterion
+            # Build xlimits array for SMT
+            xlimits = []
+            for factor_name in factor_names:
+                levels = factors[factor_name]
+                # Convert to float and get min/max range
+                numeric_levels = [float(lv) for lv in levels]
+                xlimits.append([min(numeric_levels), max(numeric_levels)])
+            
+            xlimits = np.array(xlimits)
+            
+            # Generate optimized LHS
+            sampling = LHS(xlimits=xlimits, criterion='maximin')
+            lhs_design = sampling(n_samples)
+            
+            # Map continuous values to discrete levels
+            combinations = []
+            for sample in lhs_design:
+                combo = []
+                for i, factor_name in enumerate(factor_names):
+                    levels = factors[factor_name]
+                    numeric_levels = [float(lv) for lv in levels]
+                    # Find closest level to the continuous value
+                    value = sample[i]
+                    closest_idx = min(range(len(numeric_levels)), 
+                                    key=lambda j: abs(numeric_levels[j] - value))
+                    combo.append(levels[closest_idx])
+                combinations.append(tuple(combo))
+        
+        else:
+            # Use standard pyDOE3 LHS
+            if not HAS_PYDOE3:
+                raise ImportError("pyDOE3 is required for Latin Hypercube Sampling. "
+                                "Install with: pip install pyDOE3")
+            
+            # Generate LHS design in [0,1] hypercube
+            lhs_design = pyDOE3.lhs(n=n_factors, samples=n_samples, criterion='center')
+            
+            # Map to actual factor levels
+            combinations = []
+            for sample in lhs_design:
+                combo = []
+                for i, factor_name in enumerate(factor_names):
+                    levels = factors[factor_name]
+                    # Map [0,1] to level index
+                    level_idx = int(sample[i] * len(levels))
+                    level_idx = min(level_idx, len(levels) - 1)  # Ensure within bounds
+                    combo.append(levels[level_idx])
+                combinations.append(tuple(combo))
+        
+        return combinations
+    
+    def _generate_fractional_factorial(self, factors: Dict[str, List[str]], resolution: str) -> List[Tuple]:
+        """Generate 2-level fractional factorial design using pyDOE3
+        
+        Args:
+            factors: Dictionary of factor names to level lists (must have exactly 2 levels each)
+            resolution: Resolution level ('III', 'IV', or 'V')
+        
+        Returns:
+            List of tuples representing combinations
+        """
+        if not HAS_PYDOE3:
+            raise ImportError("pyDOE3 is required for Fractional Factorial designs. "
+                            "Install with: pip install pyDOE3")
+        
+        factor_names = list(factors.keys())
+        n_factors = len(factor_names)
+        
+        # Validate that all factors have exactly 2 levels
+        for fn in factor_names:
+            if len(factors[fn]) != 2:
+                raise ValueError(f"Fractional Factorial requires exactly 2 levels per factor. "
+                               f"Factor '{AVAILABLE_FACTORS.get(fn, fn)}' has {len(factors[fn])} levels.")
+        
+        # Build generator string based on resolution
+        # For pyDOE3.fracfact, we use notation like "a b c ab" for 4 factors
+        if resolution == "III":
+            # Resolution III: Main effects aliased with 2-factor interactions
+            gen_string = " ".join([chr(97 + i) for i in range(n_factors)])  # "a b c d..."
+        elif resolution == "IV":
+            # Resolution IV: Main effects clear, 2-factor interactions may be aliased
+            if n_factors <= 4:
+                gen_string = " ".join([chr(97 + i) for i in range(n_factors)])
+            else:
+                # Add some interaction terms
+                gen_string = " ".join([chr(97 + i) for i in range(min(n_factors, 6))])
+        elif resolution == "V":
+            # Resolution V: Main effects and 2-factor interactions clear
+            gen_string = " ".join([chr(97 + i) for i in range(n_factors)])
+        else:
+            raise ValueError(f"Invalid resolution: {resolution}. Must be III, IV, or V.")
+        
+        # Generate fractional factorial design
+        design = pyDOE3.fracfact(gen_string)
+        
+        # Convert from -1/+1 coding to actual factor levels
+        combinations = []
+        for row in design:
+            combo = []
+            for i, factor_name in enumerate(factor_names):
+                levels = factors[factor_name]
+                # Map -1 to low level (index 0), +1 to high level (index 1)
+                level_idx = 0 if row[i] < 0 else 1
+                combo.append(levels[level_idx])
+            combinations.append(tuple(combo))
+        
+        return combinations
+    
+    def _generate_plackett_burman(self, factors: Dict[str, List[str]]) -> List[Tuple]:
+        """Generate Plackett-Burman screening design using pyDOE3
+        
+        Args:
+            factors: Dictionary of factor names to level lists (must have exactly 2 levels each)
+        
+        Returns:
+            List of tuples representing combinations
+        """
+        if not HAS_PYDOE3:
+            raise ImportError("pyDOE3 is required for Plackett-Burman designs. "
+                            "Install with: pip install pyDOE3")
+        
+        factor_names = list(factors.keys())
+        n_factors = len(factor_names)
+        
+        # Validate that all factors have exactly 2 levels
+        for fn in factor_names:
+            if len(factors[fn]) != 2:
+                raise ValueError(f"Plackett-Burman requires exactly 2 levels per factor. "
+                               f"Factor '{AVAILABLE_FACTORS.get(fn, fn)}' has {len(factors[fn])} levels.")
+        
+        # Generate Plackett-Burman design
+        design = pyDOE3.pbdesign(n_factors)
+        
+        # Convert from -1/+1 coding to actual factor levels
+        combinations = []
+        for row in design:
+            combo = []
+            for i, factor_name in enumerate(factor_names):
+                levels = factors[factor_name]
+                # Map -1 to low level (index 0), +1 to high level (index 1)
+                level_idx = 0 if row[i] < 0 else 1
+                combo.append(levels[level_idx])
+            combinations.append(tuple(combo))
+        
+        return combinations
+    
+    def _generate_central_composite(self, factors: Dict[str, List[str]], ccd_type: str) -> List[Tuple]:
+        """Generate Central Composite Design using pyDOE3
+        
+        Args:
+            factors: Dictionary of factor names to level lists
+            ccd_type: Type of CCD ('faced', 'inscribed', or 'circumscribed')
+        
+        Returns:
+            List of tuples representing combinations
+        """
+        if not HAS_PYDOE3:
+            raise ImportError("pyDOE3 is required for Central Composite designs. "
+                            "Install with: pip install pyDOE3")
+        
+        factor_names = list(factors.keys())
+        n_factors = len(factor_names)
+        
+        # Determine face parameter based on type
+        if ccd_type == "faced":
+            face = "faced"
+        elif ccd_type == "inscribed":
+            face = "inscribed"
+        elif ccd_type == "circumscribed":
+            face = "circumscribed"
+        else:
+            face = "faced"  # Default
+        
+        # Generate CCD design (returns coded values -1, 0, +1, and alpha)
+        design = pyDOE3.ccdesign(n_factors, center=(4, 4), alpha='orthogonal', face=face)
+        
+        # Map coded values to actual factor levels
+        combinations = []
+        for row in design:
+            combo = []
+            for i, factor_name in enumerate(factor_names):
+                levels = factors[factor_name]
+                numeric_levels = sorted([float(lv) for lv in levels])
+                
+                # Map coded value to actual level
+                # -1 = min, 0 = center, +1 = max
+                if len(numeric_levels) >= 3:
+                    min_val = numeric_levels[0]
+                    max_val = numeric_levels[-1]
+                    center_val = numeric_levels[len(numeric_levels)//2]
+                else:
+                    # If only 2 levels, compute center
+                    min_val = numeric_levels[0]
+                    max_val = numeric_levels[-1]
+                    center_val = (min_val + max_val) / 2
+                
+                coded_val = row[i]
+                
+                # Map coded value to actual value
+                if abs(coded_val) < 0.1:  # Center point (0)
+                    actual_val = center_val
+                elif coded_val < -0.5:  # Low level (-1)
+                    actual_val = min_val
+                elif coded_val > 0.5:  # High level (+1)
+                    actual_val = max_val
+                else:
+                    # Axial point (alpha), scale accordingly
+                    actual_val = center_val + coded_val * (max_val - min_val) / 2
+                
+                # Find closest existing level or use computed value
+                if len(levels) > 2:
+                    # Find closest level
+                    closest = min(levels, key=lambda x: abs(float(x) - actual_val))
+                    combo.append(closest)
+                else:
+                    # Use computed value rounded
+                    combo.append(str(round(actual_val, 2)))
+            
+            combinations.append(tuple(combo))
+        
+        return combinations
+    
+    def _generate_box_behnken(self, factors: Dict[str, List[str]]) -> List[Tuple]:
+        """Generate Box-Behnken design using pyDOE3
+        
+        Args:
+            factors: Dictionary of factor names to level lists (requires 3+ factors)
+        
+        Returns:
+            List of tuples representing combinations
+        """
+        if not HAS_PYDOE3:
+            raise ImportError("pyDOE3 is required for Box-Behnken designs. "
+                            "Install with: pip install pyDOE3")
+        
+        factor_names = list(factors.keys())
+        n_factors = len(factor_names)
+        
+        if n_factors < 3:
+            raise ValueError("Box-Behnken design requires at least 3 factors. "
+                           f"You have {n_factors} factor(s).")
+        
+        # Generate Box-Behnken design (returns coded values -1, 0, +1)
+        design = pyDOE3.bbdesign(n_factors, center=3)
+        
+        # Map coded values to actual factor levels
+        combinations = []
+        for row in design:
+            combo = []
+            for i, factor_name in enumerate(factor_names):
+                levels = factors[factor_name]
+                numeric_levels = sorted([float(lv) for lv in levels])
+                
+                # Map coded value to actual level
+                # -1 = min, 0 = center, +1 = max
+                if len(numeric_levels) >= 3:
+                    min_val = numeric_levels[0]
+                    max_val = numeric_levels[-1]
+                    center_val = numeric_levels[len(numeric_levels)//2]
+                else:
+                    # If only 2 levels, compute center
+                    min_val = numeric_levels[0]
+                    max_val = numeric_levels[-1]
+                    center_val = (min_val + max_val) / 2
+                
+                coded_val = row[i]
+                
+                # Map to closest level
+                if abs(coded_val) < 0.1:  # Center (0)
+                    actual_val = center_val
+                elif coded_val < -0.5:  # Low (-1)
+                    actual_val = min_val
+                else:  # High (+1)
+                    actual_val = max_val
+                
+                # Find closest existing level or use computed value
+                if len(levels) >= 3:
+                    closest = min(levels, key=lambda x: abs(float(x) - actual_val))
+                    combo.append(closest)
+                else:
+                    combo.append(str(round(actual_val, 2)))
+            
+            combinations.append(tuple(combo))
+        
+        return combinations
+    
     def _build_factorial_with_volumes(self) -> Tuple[List[str], List[List], List[str], List[List]]:
-        """Build full factorial design and calculate volumes"""
+        """Build factorial design (full or LHS) and calculate volumes"""
         factors = self.model.get_factors()
         if not factors:
             raise ValueError("No factors defined.")
@@ -864,10 +1550,52 @@ class FactorialDesigner(tk.Tk):
         
         stock_concs = self.model.get_all_stock_concs()
         
-        # Build factorial combinations
+        # Get design type and generate combinations
+        display_text = self.design_type_var.get()
+        if display_text in self.design_map:
+            design_type = self.design_map[display_text]
+        else:
+            design_type = display_text
+        
         factor_names = list(factors.keys())
-        level_lists = [factors[f] for f in factor_names]
-        combinations = list(itertools.product(*level_lists))
+        
+        if design_type == "full_factorial":
+            # Original full factorial logic
+            level_lists = [factors[f] for f in factor_names]
+            combinations = list(itertools.product(*level_lists))
+        
+        elif design_type == "lhs":
+            # Latin Hypercube Sampling
+            n_samples = self.sample_size_var.get()
+            
+            # Validate sample size
+            if n_samples > 384:
+                raise ValueError("Sample size cannot exceed 384 (4 plates of 96 wells).")
+            if n_samples < 1:
+                raise ValueError("Sample size must be at least 1.")
+            
+            combinations = self._generate_lhs_design(factors, n_samples)
+        
+        elif design_type == "fractional":
+            # 2-Level Fractional Factorial
+            resolution = self.resolution_var.get()
+            combinations = self._generate_fractional_factorial(factors, resolution)
+        
+        elif design_type == "plackett_burman":
+            # Plackett-Burman screening design
+            combinations = self._generate_plackett_burman(factors)
+        
+        elif design_type == "central_composite":
+            # Central Composite Design
+            ccd_type = self.ccd_type_var.get()
+            combinations = self._generate_central_composite(factors, ccd_type)
+        
+        elif design_type == "box_behnken":
+            # Box-Behnken design
+            combinations = self._generate_box_behnken(factors)
+        
+        else:
+            raise ValueError(f"Unknown design type: {design_type}")
         
         # Determine buffer pH values - make unique pH list for Opentrons
         buffer_ph_values = []
@@ -878,23 +1606,100 @@ class FactorialDesigner(tk.Tk):
                 unique_phs.add(str(ph_val).strip())
             buffer_ph_values = sorted(unique_phs)
         
-        # Build Excel headers
-        excel_headers = ["ID", "Plate_96", "Well_96", "Well_384"]
+        # Determine detergent values - make unique detergent list for Opentrons
+        detergent_values = []
+        if "detergent" in factors:
+            # Extract unique detergent values from the levels
+            unique_detergents = set()
+            for det_val in factors["detergent"]:
+                det_str = str(det_val).strip()
+                # Skip empty, None, or 0 values
+                if det_str and det_str.lower() not in ['none', '0', 'nan', '']:
+                    unique_detergents.add(det_str)
+            detergent_values = sorted(unique_detergents)
+        
+        # Determine reducing agent values - make unique reducing agent list for Opentrons
+        reducing_agent_values = []
+        if "reducing_agent" in factors:
+            # Extract unique reducing agent values from the levels
+            unique_agents = set()
+            for agent_val in factors["reducing_agent"]:
+                agent_str = str(agent_val).strip()
+                # Skip empty, None, or 0 values
+                if agent_str and agent_str.lower() not in ['none', '0', 'nan', '']:
+                    unique_agents.add(agent_str)
+            reducing_agent_values = sorted(unique_agents)
+        
+        # Build Excel headers - group categorical factors with their concentration columns
+        excel_headers = ["ID", "Plate_96", "Well_96", "Well_384", "Source", "Batch"]
+        
+        # Define categorical factor pairings
+        categorical_pairs = {
+            "buffer pH": "buffer_concentration",
+            "detergent": "detergent_concentration",
+            "reducing_agent": "reducing_agent_concentration"
+        }
+        
+        # Track which factors we've already added
+        added_factors = set()
+        
+        # Add factors in order, but group categorical with their concentrations
         for fn in factor_names:
+            if fn in added_factors:
+                continue
+                
+            # Add the factor
             excel_headers.append(AVAILABLE_FACTORS.get(fn, fn))
+            added_factors.add(fn)
+            
+            # If it's a categorical factor with a paired concentration, add that next
+            if fn in categorical_pairs:
+                paired_factor = categorical_pairs[fn]
+                if paired_factor in factor_names and paired_factor not in added_factors:
+                    excel_headers.append(AVAILABLE_FACTORS.get(paired_factor, paired_factor))
+                    added_factors.add(paired_factor)
+        
         # Add Response column for TM data entry
         excel_headers.append("Response")
         
-        # Build volume headers
-        volume_headers = []
+        # Build volume headers for Opentrons CSV
+        volume_headers = ["ID"]
+        
+        # Determine detergent values - make unique detergent list for Opentrons
+        detergent_values = []
+        if "detergent" in factors:
+            # Extract unique detergent values from the levels
+            unique_detergents = set()
+            for det_val in factors["detergent"]:
+                det_str = str(det_val).strip()
+                # Skip empty, None, or 0 values
+                if det_str and det_str.lower() not in ['none', '0', 'nan', '']:
+                    unique_detergents.add(det_str)
+            detergent_values = sorted(unique_detergents)
+        
+        # Add buffer pH columns (one column per pH value)
         if "buffer pH" in factors:
             for ph in buffer_ph_values:
-                volume_headers.append(f"buffer {ph}")
+                volume_headers.append(f"buffer_{ph}")
         
-        # Add other volume headers
-
+        # Add detergent columns (one column per detergent type)
+        if "detergent" in factors:
+            for det in detergent_values:
+                # Clean up name for column header (lowercase, replace spaces/hyphens with underscores)
+                det_clean = det.replace(' ', '_').replace('-', '_').lower()
+                volume_headers.append(det_clean)
+        
+        # Add reducing agent columns (one column per reducing agent type)
+        if "reducing_agent" in factors:
+            for agent in reducing_agent_values:
+                # Clean up name for column header (lowercase, replace spaces/hyphens with underscores)
+                agent_clean = agent.replace(' ', '_').replace('-', '_').lower()
+                volume_headers.append(agent_clean)
+        
+        # Add other volume headers (skip categorical factors and their concentrations)
         for factor in factor_names:
-            if factor in ["buffer pH", "buffer_concentration"]:
+            if factor in ["buffer pH", "buffer_concentration", "detergent", "detergent_concentration",
+                         "reducing_agent", "reducing_agent_concentration"]:
                 continue
             volume_headers.append(factor)
         
@@ -911,10 +1716,28 @@ class FactorialDesigner(tk.Tk):
             plate_num, well_pos = self._generate_well_position(idx)
             well_384 = self._convert_96_to_384_well(plate_num, well_pos)
             
-            # Excel row
-            excel_row = [idx + 1, plate_num, well_pos, well_384]
+            # Excel row - use same order as headers
+            excel_row = [idx + 1, plate_num, well_pos, well_384, design_type.upper(), 0]
+            
+            # Track which factors we've already added
+            added_factors_row = set()
+            
+            # Add factor values in same order as headers
             for fn in factor_names:
+                if fn in added_factors_row:
+                    continue
+                    
+                # Add the factor value
                 excel_row.append(row_dict.get(fn, ""))
+                added_factors_row.add(fn)
+                
+                # If it's a categorical factor with a paired concentration, add that next
+                if fn in categorical_pairs:
+                    paired_factor = categorical_pairs[fn]
+                    if paired_factor in factor_names and paired_factor not in added_factors_row:
+                        excel_row.append(row_dict.get(paired_factor, ""))
+                        added_factors_row.add(paired_factor)
+            
             # Add empty Response column for manual data entry
             excel_row.append("")
             excel_rows.append(excel_row)
@@ -923,11 +1746,11 @@ class FactorialDesigner(tk.Tk):
             volumes = {}
             total_volume_used = 0
             
-            # Handle buffer pH
+            # Handle buffer pH (categorical - one column per pH value)
             if "buffer pH" in row_dict:
                 buffer_ph = str(row_dict["buffer pH"])
                 for ph in buffer_ph_values:
-                    volumes[f"buffer {ph}"] = 0
+                    volumes[f"buffer_{ph}"] = 0
                 
                 if "buffer_concentration" in row_dict and "buffer_concentration" in stock_concs:
                     try:
@@ -935,14 +1758,61 @@ class FactorialDesigner(tk.Tk):
                         buffer_stock = stock_concs["buffer_concentration"]
                         # C1*V1 = C2*V2 → V1 = (C2*V2)/C1
                         volume = (desired_conc * final_vol) / buffer_stock
-                        volumes[f"buffer {buffer_ph}"] = round(volume, 2)
-                        total_volume_used += volumes[f"buffer {buffer_ph}"]
+                        volumes[f"buffer_{buffer_ph}"] = round(volume, 2)
+                        total_volume_used += volumes[f"buffer_{buffer_ph}"]
                     except (ValueError, ZeroDivisionError):
-                        volumes[f"buffer {buffer_ph}"] = 0
+                        volumes[f"buffer_{buffer_ph}"] = 0
             
-            # Calculate volumes for other factors (glycerol, salt, DMSO, etc.)
+            # Handle detergent (categorical - one column per detergent type)
+            if "detergent" in row_dict:
+                detergent_type = str(row_dict["detergent"]).strip()
+                
+                # Initialize all detergent columns to 0
+                for det in detergent_values:
+                    det_clean = det.replace(' ', '_').replace('-', '_').lower()
+                    volumes[det_clean] = 0
+                
+                # Only add volume if detergent is not None/empty
+                if detergent_type and detergent_type.lower() not in ['none', '0', 'nan', '']:
+                    if "detergent_concentration" in row_dict and "detergent_concentration" in stock_concs:
+                        try:
+                            desired_conc = float(row_dict["detergent_concentration"])
+                            detergent_stock = stock_concs["detergent_concentration"]
+                            # C1*V1 = C2*V2 → V1 = (C2*V2)/C1
+                            volume = (desired_conc * final_vol) / detergent_stock
+                            det_clean = detergent_type.replace(' ', '_').replace('-', '_').lower()
+                            volumes[det_clean] = round(volume, 2)
+                            total_volume_used += volumes[det_clean]
+                        except (ValueError, ZeroDivisionError):
+                            pass
+            
+            # Handle reducing_agent (categorical - one column per reducing agent type)
+            if "reducing_agent" in row_dict:
+                agent_type = str(row_dict["reducing_agent"]).strip()
+                
+                # Initialize all reducing agent columns to 0
+                for agent in reducing_agent_values:
+                    agent_clean = agent.replace(' ', '_').replace('-', '_').lower()
+                    volumes[agent_clean] = 0
+                
+                # Only add volume if reducing agent is not None/empty
+                if agent_type and agent_type.lower() not in ['none', '0', 'nan', '']:
+                    if "reducing_agent_concentration" in row_dict and "reducing_agent_concentration" in stock_concs:
+                        try:
+                            desired_conc = float(row_dict["reducing_agent_concentration"])
+                            agent_stock = stock_concs["reducing_agent_concentration"]
+                            # C1*V1 = C2*V2 → V1 = (C2*V2)/C1
+                            volume = (desired_conc * final_vol) / agent_stock
+                            agent_clean = agent_type.replace(' ', '_').replace('-', '_').lower()
+                            volumes[agent_clean] = round(volume, 2)
+                            total_volume_used += volumes[agent_clean]
+                        except (ValueError, ZeroDivisionError):
+                            pass
+            
+            # Calculate volumes for other factors (NaCl, Zinc, Glycerol, etc.)
             for factor in factor_names:
-                if factor in ["buffer pH", "buffer_concentration"]:
+                if factor in ["buffer pH", "buffer_concentration", "detergent", "detergent_concentration",
+                             "reducing_agent", "reducing_agent_concentration"]:
                     continue
                 if factor in row_dict and factor in stock_concs:
                     try:
@@ -958,7 +1828,10 @@ class FactorialDesigner(tk.Tk):
             water_volume = round(final_vol - total_volume_used, 2)
             volumes["water"] = water_volume
             
-            volume_row = [volumes.get(h, 0) for h in volume_headers]
+            # Build volume row in correct order matching headers
+            volume_row = [idx + 1]  # ID first
+            for h in volume_headers[1:]:  # Skip ID column in headers
+                volume_row.append(volumes.get(h, 0))
             volume_rows.append(volume_row)
         
         # Check for negative water volumes
@@ -1011,7 +1884,8 @@ class FactorialDesigner(tk.Tk):
             
             missing_stocks = []
             for factor in factors.keys():
-                if factor == "buffer pH":
+                # Skip categorical factors that don't need stock concentrations
+                if factor in ["buffer pH", "detergent", "reducing_agent"]:
                     continue
                 if factor not in stock_concs:
                     missing_stocks.append(AVAILABLE_FACTORS.get(factor, factor))
@@ -1031,7 +1905,7 @@ class FactorialDesigner(tk.Tk):
                 messagebox.showerror("Too Many Combinations",
                     f"Design has {total} combinations.\n\n"
                     f"Maximum: 384 (4 plates of 96 wells)\n\n"
-                    f"Please reduce factors or levels.")
+                    f"Please reduce factors/levels or sample size.")
                 return
             
             # Single-step file save dialog
@@ -1061,10 +1935,16 @@ class FactorialDesigner(tk.Tk):
                 cell.alignment = Alignment(horizontal="center")
                 cell.fill = PatternFill(start_color="4CAF50", end_color="4CAF50", fill_type="solid")
             
-            # Data
+            # Data - convert numeric strings to numbers
             for row_idx, row_data in enumerate(excel_rows, start=2):
                 for col_idx, value in enumerate(row_data, start=1):
-                    ws.cell(row=row_idx, column=col_idx, value=value)
+                    # Try to convert to number if possible
+                    try:
+                        numeric_value = float(value)
+                        ws.cell(row=row_idx, column=col_idx, value=numeric_value)
+                    except (ValueError, TypeError):
+                        # Keep as string if not numeric
+                        ws.cell(row=row_idx, column=col_idx, value=value)
             
             # Auto-adjust columns
             for col in ws.columns:
@@ -1075,9 +1955,55 @@ class FactorialDesigner(tk.Tk):
                         if len(str(cell.value)) > max_length:
                             max_length = len(str(cell.value))
                     except:
-                        pass  # TODO: maybe log this instead of silent fail?
+                        pass
                 adjusted_width = min(max_length + 2, 50)
                 ws.column_dimensions[col_letter].width = adjusted_width
+            
+            # CREATE STOCK CONCENTRATIONS METADATA SHEET
+            stock_sheet = wb.create_sheet(title="Stock_Concentrations")
+            
+            # Headers for stock concentrations sheet
+            stock_headers = ["Factor Name", "Stock Value", "Unit"]
+            for col_idx, header in enumerate(stock_headers, start=1):
+                cell = stock_sheet.cell(row=1, column=col_idx, value=header)
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal="center")
+                cell.fill = PatternFill(start_color="2196F3", end_color="2196F3", fill_type="solid")
+            
+            # Write stock concentration data
+            row_idx = 2
+            for factor_name, stock_value in stock_concs.items():
+                # Get display name
+                display_name = AVAILABLE_FACTORS.get(factor_name, factor_name)
+                
+                # Determine unit based on factor name
+                if "pH" in factor_name:
+                    unit = "pH"
+                elif "conc" in factor_name.lower() or "salt" in factor_name.lower():
+                    unit = "mM"
+                elif "glycerol" in factor_name.lower() or "dmso" in factor_name.lower() or "detergent" in factor_name.lower():
+                    unit = "%"
+                else:
+                    unit = ""  # Unknown unit
+                
+                # Write row
+                stock_sheet.cell(row=row_idx, column=1, value=display_name)
+                stock_sheet.cell(row=row_idx, column=2, value=stock_value)
+                stock_sheet.cell(row=row_idx, column=3, value=unit)
+                row_idx += 1
+            
+            # Auto-adjust stock sheet columns
+            for col in stock_sheet.columns:
+                max_length = 0
+                col_letter = col[0].column_letter
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 30)
+                stock_sheet.column_dimensions[col_letter].width = adjusted_width
             
             wb.save(xlsx_path)
             
@@ -1090,8 +2016,37 @@ class FactorialDesigner(tk.Tk):
             
             plates = (total + 95) // 96
             
+            # Get design name for display
+            display_text = self.design_type_var.get()
+            if display_text in self.design_map:
+                design_type = self.design_map[display_text]
+            else:
+                design_type = display_text
+            
+            # Build design name with details
+            if design_type == "full_factorial":
+                design_name = "Full Factorial"
+            elif design_type == "lhs":
+                if self.optimize_lhs_var.get() and HAS_SMT:
+                    design_name = "Latin Hypercube (Optimized - SMT)"
+                else:
+                    design_name = "Latin Hypercube (Standard - pyDOE3)"
+            elif design_type == "fractional":
+                resolution = self.resolution_var.get()
+                design_name = f"2-Level Fractional Factorial (Resolution {resolution})"
+            elif design_type == "plackett_burman":
+                design_name = "Plackett-Burman Screening"
+            elif design_type == "central_composite":
+                ccd_type = self.ccd_type_var.get()
+                design_name = f"Central Composite Design ({ccd_type})"
+            elif design_type == "box_behnken":
+                design_name = "Box-Behnken Design"
+            else:
+                design_name = display_text
+            
             messagebox.showinfo("Export Successful!",
                 f"Files exported successfully!\n\n"
+                f"Design Type: {design_name}\n"
                 f"📊 Sample tracking:\n{xlsx_path}\n\n"
                 f"🤖 Opentrons volumes:\n{csv_path}\n\n"
                 f"Total: {total} combinations ({plates} plates)")
