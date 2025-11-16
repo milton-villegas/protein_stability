@@ -1099,9 +1099,10 @@ class BayesianOptimizer:
                 cv_results = cross_validate(adapter)
 
                 # Extract predictions vs observed
+                # In Ax 1.1.2+, cross_validate returns a list[CVResult]
                 observed = []
                 predicted = []
-                for trial_index, cv_pred in cv_results.items():
+                for cv_pred in cv_results:
                     obs_val = cv_pred.observed.data[self.response_column][0]
                     pred_val = cv_pred.predicted.means[self.response_column]
                     observed.append(obs_val)
@@ -1336,7 +1337,8 @@ class BayesianOptimizer:
                 cv_results = cross_validate(adapter)
                 observed = []
                 predicted = []
-                for trial_index, cv_pred in cv_results.items():
+                # In Ax 1.1.2+, cross_validate returns a list[CVResult]
+                for cv_pred in cv_results:
                     obs_val = cv_pred.observed.data[self.response_column][0]
                     pred_val = cv_pred.predicted.means[self.response_column]
                     observed.append(obs_val)
