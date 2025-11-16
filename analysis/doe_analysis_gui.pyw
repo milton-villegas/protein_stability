@@ -1025,7 +1025,7 @@ class BayesianOptimizer:
             best_idx = self.data[self.response_column].idxmax()
             best_x = self.data.loc[best_idx, factor_x_original]
             best_y = self.data.loc[best_idx, factor_y_original]
-            ax2.scatter([best_x], [best_y], c='gold', s=200, marker='★',
+            ax2.scatter([best_x], [best_y], c='gold', s=200, marker='*',
                        edgecolors='black', linewidth=2, label='Best', zorder=6)
 
             ax2.set_xlabel(factor_x_original, fontsize=10, fontweight='bold')
@@ -1106,7 +1106,7 @@ class BayesianOptimizer:
 
             # Mark current best
             ax4.scatter([len(iterations)], [cumulative_best[-1]], c='gold', s=200,
-                       marker='★', edgecolors='black', linewidth=2, zorder=5,
+                       marker='*', edgecolors='black', linewidth=2, zorder=5,
                        label='Current Best')
 
             ax4.set_xlabel('Experiment Number', fontsize=10, fontweight='bold')
@@ -1244,7 +1244,7 @@ class BayesianOptimizer:
             best_idx = self.data[self.response_column].idxmax()
             best_x = self.data.loc[best_idx, factor_x_original]
             best_y = self.data.loc[best_idx, factor_y_original]
-            ax2.scatter([best_x], [best_y], c='gold', s=300, marker='★',
+            ax2.scatter([best_x], [best_y], c='gold', s=300, marker='*',
                        edgecolors='black', linewidth=3, label='Current Best', zorder=6)
             ax2.set_xlabel(factor_x_original, fontsize=13, fontweight='bold', color='#333333')
             ax2.set_ylabel(factor_y_original, fontsize=13, fontweight='bold', color='#333333')
@@ -1313,7 +1313,7 @@ class BayesianOptimizer:
                     markeredgewidth=2, label='Best Value Found', alpha=0.9)
             ax4.fill_between(iterations, cumulative_best, alpha=0.2, color='#029E73')
             ax4.scatter([len(iterations)], [cumulative_best[-1]], c='gold', s=400,
-                       marker='★', edgecolors='black', linewidth=3, zorder=5,
+                       marker='*', edgecolors='black', linewidth=3, zorder=5,
                        label='Current Best')
             total_improvement = cumulative_best[-1] - cumulative_best[0]
             ax4.text(0.05, 0.95, f'Total Improvement: {total_improvement:+.2f}\\nIterations: {len(iterations)}',
