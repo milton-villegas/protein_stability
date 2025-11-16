@@ -884,37 +884,37 @@ class BayesianOptimizer:
         return selected
     
     def get_acquisition_plot(self):
-        """Generate predicted response surface contour plot"""
+        """Generate comprehensive BO visualization with 4 panels (GUI preview)"""
         if not self.is_initialized:
             raise ValueError("Optimizer not initialized")
-        
+
         # Need at least 2 numeric factors
         if len(self.numeric_factors) < 2:
             return None
-        
+
         try:
             # Select the 2 most important numeric factors
             selected_factors = self._select_most_important_factors()
             if selected_factors is None or len(selected_factors) < 2:
                 return None
-            
+
             factor_x_original = selected_factors[0]
             factor_y_original = selected_factors[1]
-            
+
             factor_x_sanitized = self.reverse_mapping[factor_x_original]
             factor_y_sanitized = self.reverse_mapping[factor_y_original]
-            
-            print(f"Creating contour plot for: {factor_x_original} vs {factor_y_original}")
-            
+
+            print(f"Creating comprehensive BO plots for: {factor_x_original} vs {factor_y_original}")
+
             # Create grid
             x_min, x_max = self.factor_bounds[factor_x_original]
             y_min, y_max = self.factor_bounds[factor_y_original]
-            
+
             # Check if bounds are valid (not constant)
             if x_min == x_max or y_min == y_max:
                 print(f"Factor has no variation: {factor_x_original}={x_min} or {factor_y_original}={y_min}")
                 return None
-            
+
             # Add small padding to bounds
             x_range = x_max - x_min
             y_range = y_max - y_min
@@ -922,12 +922,12 @@ class BayesianOptimizer:
             x_max += 0.05 * x_range
             y_min -= 0.05 * y_range
             y_max += 0.05 * y_range
-            
-            # Use coarser grid for faster computation (20x20 instead of 30x30)
-            x = np.linspace(x_min, x_max, 20)
-            y = np.linspace(y_min, y_max, 20)
+
+            # Use coarser grid for faster GUI preview
+            x = np.linspace(x_min, x_max, 15)
+            y = np.linspace(y_min, y_max, 15)
             X, Y = np.meshgrid(x, y)
-            
+
             # Get a template with all other factors at their median values
             template_params = {}
             for factor in self.factor_columns:
@@ -938,9 +938,7 @@ class BayesianOptimizer:
                     template_params[sanitized_name] = float(self.data[factor].median())
                 else:
                     template_params[sanitized_name] = str(self.data[factor].mode()[0])
-            
-            print(f"Template params for other factors: {list(template_params.keys())}")
-            
+
             # Build list of parameterizations for batch prediction
             parameterizations = []
             for i in range(X.shape[0]):
@@ -949,78 +947,181 @@ class BayesianOptimizer:
                     params[factor_x_sanitized] = float(X[i, j])
                     params[factor_y_sanitized] = float(Y[i, j])
                     parameterizations.append(params)
-            
+
             print(f"Predicting {len(parameterizations)} points using BO model...")
-            
-            # Use correct Ax API for custom parameterizations
+
+            # Get predictions with uncertainty
             try:
                 predictions_list = self.ax_client.get_model_predictions_for_parameterizations(
                     parameterizations=parameterizations,
                     metric_names=[self.response_column]
                 )
-                
-                # Extract predictions into Z array
-                Z = np.zeros_like(X)
+
+                # Extract predictions and uncertainty into arrays
+                Z_mean = np.zeros_like(X)
+                Z_sem = np.zeros_like(X)
                 idx = 0
                 for i in range(X.shape[0]):
                     for j in range(X.shape[1]):
                         pred_mean, pred_sem = predictions_list[idx][self.response_column]
-                        Z[i, j] = pred_mean
+                        Z_mean[i, j] = pred_mean
+                        Z_sem[i, j] = pred_sem
                         idx += 1
-                
+
                 print(f"Successfully predicted all {len(parameterizations)} points")
-                
+
             except Exception as e:
                 print(f"Batch prediction failed: {e}")
                 print("Falling back to suggestion density heatmap...")
-                return self._create_suggestion_heatmap(factor_x_original, factor_y_original, 
+                return self._create_suggestion_heatmap(factor_x_original, factor_y_original,
                                                        factor_x_sanitized, factor_y_sanitized,
                                                        X, Y)
-            
-            # Create the contour plot - ENHANCED VERSION
-            # Larger for export quality
-            fig, ax = plt.subplots(1, 1, figsize=(9, 7))
 
-            # Modern colormap - use RdYlGn for better visibility (red=low, yellow=mid, green=high)
-            contour = ax.contourf(X, Y, Z, levels=20, cmap='RdYlGn', alpha=0.9)
+            # CREATE 2x2 MULTI-PANEL FIGURE (GUI PREVIEW)
+            fig = plt.figure(figsize=(14, 10))
+            gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.3)
 
-            # Enhanced colorbar
-            cbar = plt.colorbar(contour, ax=ax, label=f'Predicted {self.response_column}')
-            cbar.ax.tick_params(labelsize=11)
-            cbar.set_label(f'Predicted {self.response_column}', fontsize=12, fontweight='bold')
+            # PANEL 1: Response Surface (Top-Left)
+            ax1 = fig.add_subplot(gs[0, 0])
+            contour1 = ax1.contourf(X, Y, Z_mean, levels=15, cmap='RdYlGn', alpha=0.9)
+            cbar1 = plt.colorbar(contour1, ax=ax1)
+            cbar1.ax.tick_params(labelsize=8)
+            cbar1.set_label(f'{self.response_column}', fontsize=9, fontweight='bold')
 
-            # Add contour lines for better readability
-            contour_lines = ax.contour(X, Y, Z, levels=10, colors='black',
-                                       alpha=0.4, linewidths=1.5)
-            ax.clabel(contour_lines, inline=True, fontsize=9, fmt='%.1f')
+            contour_lines1 = ax1.contour(X, Y, Z_mean, levels=8, colors='black',
+                                        alpha=0.3, linewidths=1)
+            ax1.clabel(contour_lines1, inline=True, fontsize=7, fmt='%.1f')
 
-            # Plot existing data points with modern styling
             existing_x = self.data[factor_x_original].values
             existing_y = self.data[factor_y_original].values
-            ax.scatter(existing_x, existing_y, c='#2E86AB', s=150,
-                      edgecolors='white', linewidth=3,
-                      label='Existing Experiments', zorder=5, marker='o', alpha=0.9)
+            ax1.scatter(existing_x, existing_y, c='#2E86AB', s=80,
+                       edgecolors='white', linewidth=2, label='Tested', zorder=5, alpha=0.9)
 
-            # Enhanced labels and title
-            ax.set_xlabel(factor_x_original, fontsize=13, fontweight='bold', color='#333333')
-            ax.set_ylabel(factor_y_original, fontsize=13, fontweight='bold', color='#333333')
-            ax.set_title('Bayesian Optimization: Predicted Response Surface',
-                        fontsize=15, fontweight='bold', pad=15, color='#1a1a1a')
+            ax1.set_xlabel(factor_x_original, fontsize=10, fontweight='bold')
+            ax1.set_ylabel(factor_y_original, fontsize=10, fontweight='bold')
+            ax1.set_title('Response Surface (GP Mean)', fontsize=11, fontweight='bold', pad=10)
+            ax1.legend(fontsize=8, framealpha=0.9, edgecolor='#CCCCCC')
+            ax1.grid(True, alpha=0.15, linestyle='-', linewidth=0.5)
+            ax1.set_facecolor('#FAFAFA')
 
-            # Modern legend
-            ax.legend(fontsize=11, framealpha=0.95, edgecolor='#CCCCCC', loc='best')
+            # PANEL 2: Acquisition Function (Top-Right)
+            ax2 = fig.add_subplot(gs[0, 1])
+            # Calculate Expected Improvement (EI)
+            current_best = self.data[self.response_column].max()  # Assuming maximize
+            Z_improvement = Z_mean - current_best
+            Z_improvement[Z_improvement < 0] = 0  # Only positive improvements
+            # EI = improvement * probability
+            Z_ei = Z_improvement * (1.0 / (Z_sem + 1e-6))  # Simple EI approximation
 
-            # Modern grid
-            ax.grid(True, alpha=0.2, linestyle='-', linewidth=0.8, color='gray')
-            ax.set_axisbelow(True)
+            contour2 = ax2.contourf(X, Y, Z_ei, levels=15, cmap='plasma', alpha=0.9)
+            cbar2 = plt.colorbar(contour2, ax=ax2)
+            cbar2.ax.tick_params(labelsize=8)
+            cbar2.set_label('EI Score', fontsize=9, fontweight='bold')
 
-            # Set background
-            ax.set_facecolor('#FAFAFA')
+            ax2.scatter(existing_x, existing_y, c='#2E86AB', s=80,
+                       edgecolors='white', linewidth=2, label='Tested', zorder=5, alpha=0.9)
 
-            # Borders
-            for spine in ax.spines.values():
-                spine.set_edgecolor('#CCCCCC')
-                spine.set_linewidth(1.5)
+            # Mark best point so far
+            best_idx = self.data[self.response_column].idxmax()
+            best_x = self.data.loc[best_idx, factor_x_original]
+            best_y = self.data.loc[best_idx, factor_y_original]
+            ax2.scatter([best_x], [best_y], c='gold', s=200, marker='★',
+                       edgecolors='black', linewidth=2, label='Best', zorder=6)
+
+            ax2.set_xlabel(factor_x_original, fontsize=10, fontweight='bold')
+            ax2.set_ylabel(factor_y_original, fontsize=10, fontweight='bold')
+            ax2.set_title('Acquisition Function (Where to Sample)', fontsize=11, fontweight='bold', pad=10)
+            ax2.legend(fontsize=8, framealpha=0.9, edgecolor='#CCCCCC')
+            ax2.grid(True, alpha=0.15, linestyle='-', linewidth=0.5)
+            ax2.set_facecolor('#FAFAFA')
+
+            # PANEL 3: Cross-Validation (Bottom-Left)
+            ax3 = fig.add_subplot(gs[1, 0])
+            try:
+                from ax.modelbridge.cross_validation import cross_validate
+
+                # Get model for CV
+                model = self.ax_client.generation_strategy.model
+                cv_results = cross_validate(model)
+
+                # Extract predictions vs observed
+                observed = []
+                predicted = []
+                for trial_index, cv_pred in cv_results.items():
+                    obs_val = cv_pred.observed.data[self.response_column][0]
+                    pred_val = cv_pred.predicted.means[self.response_column]
+                    observed.append(obs_val)
+                    predicted.append(pred_val)
+
+                observed = np.array(observed)
+                predicted = np.array(predicted)
+
+                # Plot
+                ax3.scatter(observed, predicted, c='#0173B2', s=60, alpha=0.7,
+                           edgecolors='white', linewidth=1.5)
+
+                # Perfect prediction line
+                min_val = min(observed.min(), predicted.min())
+                max_val = max(observed.max(), predicted.max())
+                ax3.plot([min_val, max_val], [min_val, max_val], 'k--', linewidth=2,
+                        label='Perfect Prediction', alpha=0.5)
+
+                # Calculate R²
+                correlation = np.corrcoef(observed, predicted)[0, 1]
+                r_squared = correlation ** 2
+
+                ax3.text(0.05, 0.95, f'R² = {r_squared:.3f}',
+                        transform=ax3.transAxes, fontsize=10, fontweight='bold',
+                        verticalalignment='top', bbox=dict(boxstyle='round',
+                        facecolor='white', alpha=0.8, edgecolor='#CCCCCC'))
+
+            except Exception as e:
+                # If CV fails, show simple text
+                ax3.text(0.5, 0.5, f'Cross-Validation\nNot Available\n\n{str(e)[:50]}',
+                        ha='center', va='center', fontsize=9,
+                        transform=ax3.transAxes, style='italic')
+
+            ax3.set_xlabel(f'Observed {self.response_column}', fontsize=10, fontweight='bold')
+            ax3.set_ylabel(f'Predicted {self.response_column}', fontsize=10, fontweight='bold')
+            ax3.set_title('Model Quality (Cross-Validation)', fontsize=11, fontweight='bold', pad=10)
+            ax3.legend(fontsize=8, framealpha=0.9, edgecolor='#CCCCCC')
+            ax3.grid(True, alpha=0.15, linestyle='-', linewidth=0.5)
+            ax3.set_facecolor('#FAFAFA')
+
+            # PANEL 4: Optimization Progress (Bottom-Right)
+            ax4 = fig.add_subplot(gs[1, 1])
+
+            # Get cumulative best values
+            response_values = self.data[self.response_column].values
+            cumulative_best = np.maximum.accumulate(response_values)  # Assuming maximize
+            iterations = np.arange(1, len(cumulative_best) + 1)
+
+            # Plot progress
+            ax4.plot(iterations, cumulative_best, 'o-', color='#029E73', linewidth=2.5,
+                    markersize=6, markerfacecolor='#029E73', markeredgecolor='white',
+                    markeredgewidth=1.5, label='Best So Far', alpha=0.9)
+
+            # Fill area under curve
+            ax4.fill_between(iterations, cumulative_best, alpha=0.2, color='#029E73')
+
+            # Mark current best
+            ax4.scatter([len(iterations)], [cumulative_best[-1]], c='gold', s=200,
+                       marker='★', edgecolors='black', linewidth=2, zorder=5,
+                       label='Current Best')
+
+            ax4.set_xlabel('Experiment Number', fontsize=10, fontweight='bold')
+            ax4.set_ylabel(f'Best {self.response_column}', fontsize=10, fontweight='bold')
+            ax4.set_title('Optimization Progress', fontsize=11, fontweight='bold', pad=10)
+            ax4.legend(fontsize=8, framealpha=0.9, edgecolor='#CCCCCC')
+            ax4.grid(True, alpha=0.15, linestyle='-', linewidth=0.5)
+            ax4.set_facecolor('#FAFAFA')
+
+            # Annotate improvement
+            total_improvement = cumulative_best[-1] - cumulative_best[0]
+            ax4.text(0.05, 0.05, f'Total Δ: {total_improvement:+.2f}',
+                    transform=ax4.transAxes, fontsize=9, fontweight='bold',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8,
+                    edgecolor='#CCCCCC'))
 
             plt.tight_layout()
             return fig
@@ -1030,7 +1131,216 @@ class BayesianOptimizer:
             import traceback
             traceback.print_exc()
             return None
-    
+
+    def export_bo_plots(self, directory):
+        """Export individual high-resolution BO plots for publication"""
+        if not self.is_initialized:
+            raise ValueError("Optimizer not initialized")
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        exported_files = []
+
+        try:
+            # Get the necessary data (same as preview)
+            selected_factors = self._select_most_important_factors()
+            if selected_factors is None or len(selected_factors) < 2:
+                return []
+
+            factor_x_original = selected_factors[0]
+            factor_y_original = selected_factors[1]
+            factor_x_sanitized = self.reverse_mapping[factor_x_original]
+            factor_y_sanitized = self.reverse_mapping[factor_y_original]
+
+            # Create higher resolution grid for export
+            x_min, x_max = self.factor_bounds[factor_x_original]
+            y_min, y_max = self.factor_bounds[factor_y_original]
+            x_range = x_max - x_min
+            y_range = y_max - y_min
+            x_min -= 0.05 * x_range
+            x_max += 0.05 * x_range
+            y_min -= 0.05 * y_range
+            y_max += 0.05 * y_range
+
+            x = np.linspace(x_min, x_max, 30)  # Higher resolution for export
+            y = np.linspace(y_min, y_max, 30)
+            X, Y = np.meshgrid(x, y)
+
+            # Template params
+            template_params = {}
+            for factor in self.factor_columns:
+                sanitized_name = self.reverse_mapping[factor]
+                if factor == factor_x_original or factor == factor_y_original:
+                    continue
+                if factor in self.numeric_factors:
+                    template_params[sanitized_name] = float(self.data[factor].median())
+                else:
+                    template_params[sanitized_name] = str(self.data[factor].mode()[0])
+
+            # Build parameterizations
+            parameterizations = []
+            for i in range(X.shape[0]):
+                for j in range(X.shape[1]):
+                    params = template_params.copy()
+                    params[factor_x_sanitized] = float(X[i, j])
+                    params[factor_y_sanitized] = float(Y[i, j])
+                    parameterizations.append(params)
+
+            # Get predictions
+            predictions_list = self.ax_client.get_model_predictions_for_parameterizations(
+                parameterizations=parameterizations,
+                metric_names=[self.response_column]
+            )
+
+            Z_mean = np.zeros_like(X)
+            Z_sem = np.zeros_like(X)
+            idx = 0
+            for i in range(X.shape[0]):
+                for j in range(X.shape[1]):
+                    pred_mean, pred_sem = predictions_list[idx][self.response_column]
+                    Z_mean[i, j] = pred_mean
+                    Z_sem[i, j] = pred_sem
+                    idx += 1
+
+            existing_x = self.data[factor_x_original].values
+            existing_y = self.data[factor_y_original].values
+
+            # EXPORT 1: Response Surface
+            fig1, ax1 = plt.subplots(1, 1, figsize=(9, 7))
+            contour1 = ax1.contourf(X, Y, Z_mean, levels=20, cmap='RdYlGn', alpha=0.9)
+            cbar1 = plt.colorbar(contour1, ax=ax1)
+            cbar1.ax.tick_params(labelsize=11)
+            cbar1.set_label(f'Predicted {self.response_column}', fontsize=12, fontweight='bold')
+            contour_lines1 = ax1.contour(X, Y, Z_mean, levels=10, colors='black',
+                                        alpha=0.4, linewidths=1.5)
+            ax1.clabel(contour_lines1, inline=True, fontsize=9, fmt='%.1f')
+            ax1.scatter(existing_x, existing_y, c='#2E86AB', s=150,
+                       edgecolors='white', linewidth=3, label='Existing Experiments',
+                       zorder=5, marker='o', alpha=0.9)
+            ax1.set_xlabel(factor_x_original, fontsize=13, fontweight='bold', color='#333333')
+            ax1.set_ylabel(factor_y_original, fontsize=13, fontweight='bold', color='#333333')
+            ax1.set_title('Bayesian Optimization: Predicted Response Surface',
+                        fontsize=15, fontweight='bold', pad=15, color='#1a1a1a')
+            ax1.legend(fontsize=11, framealpha=0.95, edgecolor='#CCCCCC', loc='best')
+            ax1.grid(True, alpha=0.2, linestyle='-', linewidth=0.8, color='gray')
+            ax1.set_facecolor('#FAFAFA')
+            plt.tight_layout()
+            filepath1 = os.path.join(directory, f'BO_Response_Surface_{timestamp}.png')
+            fig1.savefig(filepath1, dpi=300, bbox_inches='tight')
+            plt.close(fig1)
+            exported_files.append(filepath1)
+
+            # EXPORT 2: Acquisition Function
+            fig2, ax2 = plt.subplots(1, 1, figsize=(9, 7))
+            current_best = self.data[self.response_column].max()
+            Z_improvement = Z_mean - current_best
+            Z_improvement[Z_improvement < 0] = 0
+            Z_ei = Z_improvement * (1.0 / (Z_sem + 1e-6))
+            contour2 = ax2.contourf(X, Y, Z_ei, levels=20, cmap='plasma', alpha=0.9)
+            cbar2 = plt.colorbar(contour2, ax=ax2)
+            cbar2.ax.tick_params(labelsize=11)
+            cbar2.set_label('Expected Improvement Score', fontsize=12, fontweight='bold')
+            ax2.scatter(existing_x, existing_y, c='#2E86AB', s=150,
+                       edgecolors='white', linewidth=3, label='Tested', zorder=5, alpha=0.9)
+            best_idx = self.data[self.response_column].idxmax()
+            best_x = self.data.loc[best_idx, factor_x_original]
+            best_y = self.data.loc[best_idx, factor_y_original]
+            ax2.scatter([best_x], [best_y], c='gold', s=300, marker='★',
+                       edgecolors='black', linewidth=3, label='Current Best', zorder=6)
+            ax2.set_xlabel(factor_x_original, fontsize=13, fontweight='bold', color='#333333')
+            ax2.set_ylabel(factor_y_original, fontsize=13, fontweight='bold', color='#333333')
+            ax2.set_title('Bayesian Optimization: Acquisition Function',
+                        fontsize=15, fontweight='bold', pad=15, color='#1a1a1a')
+            ax2.legend(fontsize=11, framealpha=0.95, edgecolor='#CCCCCC', loc='best')
+            ax2.grid(True, alpha=0.2, linestyle='-', linewidth=0.8, color='gray')
+            ax2.set_facecolor('#FAFAFA')
+            plt.tight_layout()
+            filepath2 = os.path.join(directory, f'BO_Acquisition_Function_{timestamp}.png')
+            fig2.savefig(filepath2, dpi=300, bbox_inches='tight')
+            plt.close(fig2)
+            exported_files.append(filepath2)
+
+            # EXPORT 3: Cross-Validation
+            fig3, ax3 = plt.subplots(1, 1, figsize=(9, 7))
+            try:
+                from ax.modelbridge.cross_validation import cross_validate
+                model = self.ax_client.generation_strategy.model
+                cv_results = cross_validate(model)
+                observed = []
+                predicted = []
+                for trial_index, cv_pred in cv_results.items():
+                    obs_val = cv_pred.observed.data[self.response_column][0]
+                    pred_val = cv_pred.predicted.means[self.response_column]
+                    observed.append(obs_val)
+                    predicted.append(pred_val)
+                observed = np.array(observed)
+                predicted = np.array(predicted)
+                ax3.scatter(observed, predicted, c='#0173B2', s=100, alpha=0.7,
+                           edgecolors='white', linewidth=2)
+                min_val = min(observed.min(), predicted.min())
+                max_val = max(observed.max(), predicted.max())
+                ax3.plot([min_val, max_val], [min_val, max_val], 'k--', linewidth=2.5,
+                        label='Perfect Prediction', alpha=0.6)
+                correlation = np.corrcoef(observed, predicted)[0, 1]
+                r_squared = correlation ** 2
+                ax3.text(0.05, 0.95, f'R² = {r_squared:.3f}\\nn = {len(observed)}',
+                        transform=ax3.transAxes, fontsize=12, fontweight='bold',
+                        verticalalignment='top', bbox=dict(boxstyle='round',
+                        facecolor='white', alpha=0.9, edgecolor='#CCCCCC', linewidth=2))
+            except:
+                ax3.text(0.5, 0.5, 'Cross-Validation Not Available',
+                        ha='center', va='center', fontsize=12, fontweight='bold',
+                        transform=ax3.transAxes)
+            ax3.set_xlabel(f'Observed {self.response_column}', fontsize=13, fontweight='bold', color='#333333')
+            ax3.set_ylabel(f'Predicted {self.response_column}', fontsize=13, fontweight='bold', color='#333333')
+            ax3.set_title('Model Quality: Cross-Validation',
+                        fontsize=15, fontweight='bold', pad=15, color='#1a1a1a')
+            ax3.legend(fontsize=11, framealpha=0.95, edgecolor='#CCCCCC', loc='best')
+            ax3.grid(True, alpha=0.2, linestyle='-', linewidth=0.8, color='gray')
+            ax3.set_facecolor('#FAFAFA')
+            plt.tight_layout()
+            filepath3 = os.path.join(directory, f'BO_CrossValidation_{timestamp}.png')
+            fig3.savefig(filepath3, dpi=300, bbox_inches='tight')
+            plt.close(fig3)
+            exported_files.append(filepath3)
+
+            # EXPORT 4: Progress
+            fig4, ax4 = plt.subplots(1, 1, figsize=(9, 7))
+            response_values = self.data[self.response_column].values
+            cumulative_best = np.maximum.accumulate(response_values)
+            iterations = np.arange(1, len(cumulative_best) + 1)
+            ax4.plot(iterations, cumulative_best, 'o-', color='#029E73', linewidth=3,
+                    markersize=8, markerfacecolor='#029E73', markeredgecolor='white',
+                    markeredgewidth=2, label='Best Value Found', alpha=0.9)
+            ax4.fill_between(iterations, cumulative_best, alpha=0.2, color='#029E73')
+            ax4.scatter([len(iterations)], [cumulative_best[-1]], c='gold', s=400,
+                       marker='★', edgecolors='black', linewidth=3, zorder=5,
+                       label='Current Best')
+            total_improvement = cumulative_best[-1] - cumulative_best[0]
+            ax4.text(0.05, 0.95, f'Total Improvement: {total_improvement:+.2f}\\nIterations: {len(iterations)}',
+                    transform=ax4.transAxes, fontsize=11, fontweight='bold',
+                    verticalalignment='top', bbox=dict(boxstyle='round',
+                    facecolor='white', alpha=0.9, edgecolor='#CCCCCC', linewidth=2))
+            ax4.set_xlabel('Experiment Number', fontsize=13, fontweight='bold', color='#333333')
+            ax4.set_ylabel(f'Best {self.response_column}', fontsize=13, fontweight='bold', color='#333333')
+            ax4.set_title('Optimization Progress',
+                        fontsize=15, fontweight='bold', pad=15, color='#1a1a1a')
+            ax4.legend(fontsize=11, framealpha=0.95, edgecolor='#CCCCCC', loc='best')
+            ax4.grid(True, alpha=0.2, linestyle='-', linewidth=0.8, color='gray')
+            ax4.set_facecolor('#FAFAFA')
+            plt.tight_layout()
+            filepath4 = os.path.join(directory, f'BO_Progress_{timestamp}.png')
+            fig4.savefig(filepath4, dpi=300, bbox_inches='tight')
+            plt.close(fig4)
+            exported_files.append(filepath4)
+
+            return exported_files
+
+        except Exception as e:
+            print(f"Error exporting BO plots: {e}")
+            import traceback
+            traceback.print_exc()
+            return exported_files
+
     def _smart_column_match(self, column_name: str) -> str:
         """
         Intelligently match Excel column name to internal factor name for BO.
@@ -1580,7 +1890,11 @@ class DoEAnalysisGUI:
             self.export_bo_button = ttk.Button(button_frame, text="📤 Export BO Batch to Files",
                                               command=self.export_bo_batch, state='disabled')
             self.export_bo_button.pack(side='left', padx=5)
-            
+
+            self.export_bo_plots_button = ttk.Button(button_frame, text="📊 Export BO Plots",
+                                                     command=self.export_bo_plots_gui, state='disabled')
+            self.export_bo_plots_button.pack(side='left', padx=5)
+
             ttk.Label(button_frame, text="(Available after analysis with BO suggestions)",
                      font=('TkDefaultFont', 9)).pack(side='left', padx=5)
         
@@ -2152,6 +2466,8 @@ class DoEAnalysisGUI:
                 # Enable export button after successful BO initialization
                 if hasattr(self, 'export_bo_button'):
                     self.export_bo_button.config(state='normal')
+                if hasattr(self, 'export_bo_plots_button'):
+                    self.export_bo_plots_button.config(state='normal')
                 
             except Exception as e:
                 self.recommendations_text.insert(tk.END, 
@@ -2161,6 +2477,8 @@ class DoEAnalysisGUI:
                 # Disable export button if BO failed
                 if hasattr(self, 'export_bo_button'):
                     self.export_bo_button.config(state='disabled')
+                if hasattr(self, 'export_bo_plots_button'):
+                    self.export_bo_plots_button.config(state='disabled')
             
             self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
     
@@ -2479,6 +2797,29 @@ class DoEAnalysisGUI:
         
         ttk.Button(button_frame, text="Export", command=do_export).pack(side='left', padx=5)
         ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side='left', padx=5)
+
+    def export_bo_plots_gui(self):
+        """GUI wrapper for exporting BO plots"""
+        if not AX_AVAILABLE or not self.optimizer or not self.optimizer.is_initialized:
+            messagebox.showerror("Error", "Bayesian Optimization not available or not initialized.")
+            return
+
+        # Ask user for directory
+        directory = filedialog.askdirectory(title="Select directory to save BO plots")
+
+        if directory:
+            try:
+                exported_files = self.optimizer.export_bo_plots(directory)
+
+                if exported_files:
+                    filenames = "\\n".join([os.path.basename(f) for f in exported_files])
+                    messagebox.showinfo("Success",
+                                      f"Exported {len(exported_files)} BO plots:\\n\\n{filenames}\\n\\nLocation: {directory}")
+                else:
+                    messagebox.showwarning("Warning", "No plots were exported. Check console for details.")
+
+            except Exception as e:
+                messagebox.showerror("Error", f"Export failed:\\n{str(e)}")
 
 
 # Main
