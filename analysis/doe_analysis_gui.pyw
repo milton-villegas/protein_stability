@@ -863,24 +863,69 @@ class BayesianOptimizer:
             return None
     
     def _select_most_important_factors(self):
-        """Select the 2 most important numeric factors for visualization"""
+        """Select the 2 most important numeric factors using GP lengthscales"""
         if len(self.numeric_factors) <= 2:
             return self.numeric_factors[:2] if len(self.numeric_factors) == 2 else None
-        
-        # Strategy 1: Select factors with largest ranges (normalized)
+
+        try:
+            # Strategy: Use GP model lengthscales (shorter = more important)
+            # Get the GP model from Ax
+            model = self.ax_client.generation_strategy.model
+
+            # Extract covariance kernel parameters (lengthscales)
+            # In Ax/BoTorch, lengthscales indicate how quickly function changes
+            # Short lengthscale = factor is important (rapid changes)
+            # Long lengthscale = factor is less important (slow changes)
+
+            lengthscales = {}
+
+            # Try to get lengthscales from the GP model
+            if hasattr(model, 'model') and hasattr(model.model, 'covar_module'):
+                # BoTorch model structure
+                covar = model.model.covar_module
+
+                # Get base kernel (may be wrapped in ScaleKernel)
+                base_kernel = covar.base_kernel if hasattr(covar, 'base_kernel') else covar
+
+                # Extract lengthscales
+                if hasattr(base_kernel, 'lengthscale'):
+                    ls_tensor = base_kernel.lengthscale.detach().cpu().numpy().flatten()
+
+                    # Map lengthscales to factor names (using sanitized names)
+                    for idx, factor in enumerate(self.numeric_factors):
+                        if idx < len(ls_tensor):
+                            # Inverse lengthscale = importance (shorter = more important)
+                            lengthscales[factor] = 1.0 / (ls_tensor[idx] + 1e-6)
+
+                    print(f"✓ Using GP lengthscales for factor selection")
+                    print(f"  Lengthscale-based importance: {lengthscales}")
+
+                    # Sort by importance (inverse lengthscale) and take top 2
+                    sorted_factors = sorted(lengthscales.items(), key=lambda x: x[1], reverse=True)
+                    selected = [f[0] for f in sorted_factors[:2]]
+
+                    print(f"  Selected most important factors: {selected}")
+                    return selected
+
+            # If lengthscale extraction fails, fall back to range-based
+            print("⚠ Could not extract GP lengthscales, falling back to range-based selection")
+
+        except Exception as e:
+            print(f"⚠ Error extracting lengthscales: {e}")
+            print("  Falling back to range-based selection")
+
+        # Fallback: Select factors with largest ranges
         factor_ranges = {}
         for factor in self.numeric_factors:
             min_val, max_val = self.factor_bounds[factor]
-            # Normalize by the data range to compare fairly
             data_range = max_val - min_val
             if data_range > 0:
                 factor_ranges[factor] = data_range
-        
-        # Sort by range and take top 2
+
         sorted_factors = sorted(factor_ranges.items(), key=lambda x: x[1], reverse=True)
         selected = [f[0] for f in sorted_factors[:2]]
-        
-        print(f"Selected factors based on range: {selected}")
+
+        print(f"  Selected factors based on range: {selected}")
         return selected
     
     def get_acquisition_plot(self):
