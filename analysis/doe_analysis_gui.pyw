@@ -907,10 +907,12 @@ class BayesianOptimizer:
             # If feature importances not available, fall back
             print("⚠ Could not extract feature importances, falling back to range-based selection")
 
+        except NotImplementedError:
+            # Some models (e.g., mixed continuous/categorical) don't support feature importances
+            print("⚠ Feature importances not supported for this model type")
+            print("  Falling back to range-based selection")
         except Exception as e:
             print(f"⚠ Error extracting feature importances: {e}")
-            import traceback
-            traceback.print_exc()
             print("  Falling back to range-based selection")
 
         # Fallback: Select factors with largest ranges
