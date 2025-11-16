@@ -879,11 +879,20 @@ class BayesianOptimizer:
 
             lengthscales = {}
 
-            # Try to get lengthscales from the GP model
-            if hasattr(adapter, 'adapter') and hasattr(adapter.adapter, 'covar_module'):
-                # BoTorch adapter structure
-                covar = adapter.adapter.covar_module
+            # Try multiple paths to find the GP model's covariance module
+            covar = None
 
+            # Path 1: adapter.model.covar_module (Ax 1.1.2+)
+            if hasattr(adapter, 'model') and hasattr(adapter.model, 'covar_module'):
+                covar = adapter.model.covar_module
+            # Path 2: adapter.adapter.covar_module (older structure)
+            elif hasattr(adapter, 'adapter') and hasattr(adapter.adapter, 'covar_module'):
+                covar = adapter.adapter.covar_module
+            # Path 3: Direct model access
+            elif hasattr(adapter, 'covar_module'):
+                covar = adapter.covar_module
+
+            if covar is not None:
                 # Get base kernel (may be wrapped in ScaleKernel)
                 base_kernel = covar.base_kernel if hasattr(covar, 'base_kernel') else covar
 
@@ -897,15 +906,16 @@ class BayesianOptimizer:
                             # Inverse lengthscale = importance (shorter = more important)
                             lengthscales[factor] = 1.0 / (ls_tensor[idx] + 1e-6)
 
-                    print(f"✓ Using GP lengthscales for factor selection")
-                    print(f"  Lengthscale-based importance: {lengthscales}")
+                    if lengthscales:
+                        print(f"✓ Using GP lengthscales for factor selection")
+                        print(f"  Lengthscale-based importance: {lengthscales}")
 
-                    # Sort by importance (inverse lengthscale) and take top 2
-                    sorted_factors = sorted(lengthscales.items(), key=lambda x: x[1], reverse=True)
-                    selected = [f[0] for f in sorted_factors[:2]]
+                        # Sort by importance (inverse lengthscale) and take top 2
+                        sorted_factors = sorted(lengthscales.items(), key=lambda x: x[1], reverse=True)
+                        selected = [f[0] for f in sorted_factors[:2]]
 
-                    print(f"  Selected most important factors: {selected}")
-                    return selected
+                        print(f"  Selected most important factors: {selected}")
+                        return selected
 
             # If lengthscale extraction fails, fall back to range-based
             print("⚠ Could not extract GP lengthscales, falling back to range-based selection")
