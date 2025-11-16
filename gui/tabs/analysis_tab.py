@@ -991,8 +991,7 @@ class BayesianOptimizer:
             print(f"  Sobol analysis not available (Ax version may not support it)")
         except Exception as e:
             print(f"  Sobol analysis failed: {e}")
-            import traceback
-            traceback.print_exc()
+            # Continue to range-based fallback
 
         # Ultimate fallback: largest parameter ranges
         factor_ranges = {}
