@@ -213,10 +213,11 @@ class DoEAnalyzer:
     """Statistical analysis via regression"""
     
     MODEL_TYPES = {
+        'mean': 'Mean (intercept only)',
         'linear': 'Linear (main effects only)',
         'interactions': 'Linear with 2-way interactions',
-        'quadratic': 'Quadratic (interactions + squared terms)',
-        'purequadratic': 'Pure quadratic (squared terms only)'
+        'quadratic': 'Quadratic (full second-order)',
+        'reduced': 'Reduced Quadratic (backward elimination)'
     }
     
     def __init__(self):
@@ -248,52 +249,45 @@ class DoEAnalyzer:
     def build_formula(self, model_type='linear'):
         """Build regression formula based on model type"""
         self.model_type = model_type
-        
+
+        # Mean model - intercept only
+        if model_type == 'mean':
+            formula = f"Q('{self.response_column}') ~ 1"
+            return formula
+
         # Prepare factor terms
         factor_terms = []
         for factor in self.factor_columns:
             if factor in self.categorical_factors:
-                # C() treats as categorical, Q() quotes column names with spaces
                 factor_terms.append(f"C(Q('{factor}'))")
             else:
                 factor_terms.append(f"Q('{factor}')")
-        
+
         # Build formula
         if model_type == 'linear':
             formula = f"Q('{self.response_column}') ~ " + " + ".join(factor_terms)
-            
+
         elif model_type == 'interactions':
             main_effects = " + ".join(factor_terms)
             interactions = self._build_interaction_terms(factor_terms)
             formula = f"Q('{self.response_column}') ~ {main_effects}"
             if interactions:
                 formula += " + " + " + ".join(interactions)
-                
+
         elif model_type == 'quadratic':
             main_effects = " + ".join(factor_terms)
             interactions = self._build_interaction_terms(factor_terms)
             squared_terms = []
             for factor in self.numeric_factors:
-                # I() treats expression as-is (prevents ** being interpreted as interaction)
                 squared_terms.append(f"I(Q('{factor}')**2)")
             formula = f"Q('{self.response_column}') ~ {main_effects}"
             if interactions:
                 formula += " + " + " + ".join(interactions)
             if squared_terms:
                 formula += " + " + " + ".join(squared_terms)
-                
-        elif model_type == 'purequadratic':
-            main_effects = " + ".join(factor_terms)
-            squared_terms = []
-            for factor in self.numeric_factors:
-                # I() treats expression as-is
-                squared_terms.append(f"I(Q('{factor}')**2)")
-            formula = f"Q('{self.response_column}') ~ {main_effects}"
-            if squared_terms:
-                formula += " + " + " + ".join(squared_terms)
         else:
             raise ValueError(f"Unknown model type: {model_type}")
-        
+
         return formula
     
     def fit_model(self, model_type='linear'):
@@ -361,9 +355,54 @@ class DoEAnalyzer:
         
         return main_effects
 
+    def fit_reduced_quadratic(self, p_remove=0.10):
+        """
+        Fit reduced quadratic model using backward elimination.
+        Starts with full quadratic and removes non-significant terms.
+        """
+        if self.data is None:
+            raise ValueError("No data available")
+
+        formula = self.build_formula('quadratic')
+        current_model = smf.ols(formula=formula, data=self.data).fit()
+
+        while True:
+            pvalues = current_model.pvalues.drop('Intercept', errors='ignore')
+
+            if pvalues.empty or pvalues.max() < p_remove:
+                break
+
+            worst_term = pvalues.idxmax()
+
+            try:
+                current_formula = current_model.model.formula
+                terms = current_formula.split('~')[1].strip().split('+')
+                terms = [t.strip() for t in terms if t.strip()]
+
+                term_to_remove = None
+                for term in terms:
+                    if worst_term in term or term in worst_term:
+                        term_to_remove = term
+                        break
+
+                if term_to_remove:
+                    terms.remove(term_to_remove)
+                    if not terms:
+                        break
+                    new_formula = f"Q('{self.response_column}') ~ " + " + ".join(terms)
+                    new_model = smf.ols(formula=new_formula, data=self.data).fit()
+                    current_model = new_model
+                else:
+                    break
+
+            except Exception:
+                break
+
+        return current_model
+
     def compare_all_models(self):
         """
-        Fit all 4 model types and return comparison statistics.
+        Fit all 5 model types and return comparison statistics.
 
         Returns:
             dict: Comparison data with keys:
@@ -374,7 +413,7 @@ class DoEAnalyzer:
         if self.data is None:
             raise ValueError("No data available")
 
-        model_types = ['linear', 'interactions', 'purequadratic', 'quadratic']
+        model_types = ['mean', 'linear', 'interactions', 'quadratic', 'reduced']
         comparison_data = {
             'models': {},
             'fitted_models': {},
@@ -384,8 +423,11 @@ class DoEAnalyzer:
         # Fit each model type and collect statistics
         for model_type in model_types:
             try:
-                formula = self.build_formula(model_type)
-                fitted_model = smf.ols(formula=formula, data=self.data).fit()
+                if model_type == 'reduced':
+                    fitted_model = self.fit_reduced_quadratic(p_remove=0.10)
+                else:
+                    formula = self.build_formula(model_type)
+                    fitted_model = smf.ols(formula=formula, data=self.data).fit()
 
                 # Extract key statistics
                 stats = {
@@ -498,7 +540,7 @@ class DoEAnalyzer:
             reason_parts.append("(Excellent fit)")
 
         # Check if it's significantly better than simpler models
-        model_order = ['linear', 'interactions', 'purequadratic', 'quadratic']
+        model_order = ['mean', 'linear', 'interactions', 'quadratic', 'reduced']
         best_idx = model_order.index(best_model) if best_model in model_order else -1
 
         for i in range(best_idx):
@@ -2113,7 +2155,7 @@ class AnalysisTab(ttk.Frame):
         ttk.Label(config_frame, text="Model Selection:").grid(row=0, column=0, sticky='w', padx=5, pady=5)
 
         # Label indicating automatic selection
-        auto_label = ttk.Label(config_frame, text="✓ Automatic (compares all 4 models)",
+        auto_label = ttk.Label(config_frame, text="✓ Automatic (compares all 5 models)",
                               foreground='#029E73', font=('TkDefaultFont', 9, 'bold'))
         auto_label.grid(row=0, column=1, sticky='w', padx=5, pady=5)
 
@@ -2461,7 +2503,7 @@ class AnalysisTab(ttk.Frame):
                 response_column=self.handler.response_column
             )
 
-            # AUTOMATIC MODEL SELECTION - Compare all 4 models
+            # AUTOMATIC MODEL SELECTION - Compare all 5 models
             self.status_var.set("Comparing all models...")
             self.update()
 
@@ -2502,7 +2544,7 @@ class AnalysisTab(ttk.Frame):
                               f"Observations: {self.results['model_stats']['Observations']}\n"
                               f"R-squared: {self.results['model_stats']['R-squared']:.4f}\n"
                               f"Adjusted R-squared: {self.results['model_stats']['Adjusted R-squared']:.4f}\n\n"
-                              f"All 4 models were compared. See Statistics tab for details.")
+                              f"All 5 models were compared. See Statistics tab for details.")
 
         except Exception as e:
             messagebox.showerror("Error", f"Analysis failed:\n{str(e)}")
@@ -2528,7 +2570,7 @@ class AnalysisTab(ttk.Frame):
 
             if comparison_table is not None and not comparison_table.empty:
                 # Format the comparison table for display
-                self.stats_text.insert(tk.END, "Model Comparison (all 4 models fitted):\n\n")
+                self.stats_text.insert(tk.END, "Model Comparison (all 5 models fitted):\n\n")
 
                 # Create formatted header
                 header = f"{'Model':<30} {'Adj R²':>10} {'BIC':>10} {'RMSE':>10} {'DF':>6}  {'Recommend':>10}\n"
@@ -2540,7 +2582,7 @@ class AnalysisTab(ttk.Frame):
                 recommended_model = recommendation['recommended_model']
 
                 # Display each model
-                model_order = ['linear', 'interactions', 'purequadratic', 'quadratic']
+                model_order = ['mean', 'linear', 'interactions', 'quadratic', 'reduced']
                 for model_type in model_order:
                     if model_type in self.model_comparison['models']:
                         stats = self.model_comparison['models'][model_type]
