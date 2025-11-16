@@ -977,7 +977,14 @@ class AnalysisTab(ttk.Frame):
 
                 self.exporter.set_results(self.results, self.main_effects)
                 self.exporter.export_statistics_excel(final_path)
-                messagebox.showinfo("Success", f"Statistics exported to:\n{final_path}")
+
+                # Extract filename and directory for clean message
+                filename = os.path.basename(final_path)
+                directory = os.path.dirname(final_path)
+
+                messagebox.showinfo("Export Complete",
+                    f"File saved: {filename}\n"
+                    f"Location: {directory}")
             except Exception as e:
                 messagebox.showerror("Error", f"Export failed:\n{str(e)}")
     
@@ -1187,12 +1194,12 @@ class AnalysisTab(ttk.Frame):
                         dpi=dpi, bbox_inches='tight')
             plt.close(fig3)
 
-            messagebox.showinfo("Success", f"Plots exported to:\n{directory}\n\n"
-                              f"Format: {file_format.upper()}, DPI: {dpi if file_format in ['png', 'tiff'] else 'Vector'}\n\n"
-                              f"Files created:\n"
+            messagebox.showinfo("Export Complete",
+                              f"Files saved:\n"
                               f"- {base_path}_MainEffects_{date_str}.{file_format}\n"
                               f"- {base_path}_Interactions_{date_str}.{file_format}\n"
-                              f"- {base_path}_Residuals_{date_str}.{file_format}")
+                              f"- {base_path}_Residuals_{date_str}.{file_format}\n\n"
+                              f"Location: {directory}")
         except Exception as e:
             messagebox.showerror("Error", f"Export failed:\n{str(e)}")
     
@@ -1294,11 +1301,17 @@ class AnalysisTab(ttk.Frame):
                 if result:
                     xlsx_path, csv_path = result
                     dialog.destroy()
-                    messagebox.showinfo("Export Successful!",
-                        f"BO Batch exported successfully!\n\n"
-                        f"📊 Excel updated:\n{xlsx_path}\n\n"
-                        f"🤖 Opentrons CSV:\n{csv_path}\n\n"
-                        f"Batch {batch_number}: {n_suggestions} new experiments added")
+
+                    # Extract filenames and directory for clean message
+                    xlsx_filename = os.path.basename(xlsx_path)
+                    csv_filename = os.path.basename(csv_path)
+                    directory = os.path.dirname(xlsx_path)
+
+                    messagebox.showinfo("Export Complete",
+                        f"Files saved:\n"
+                        f"- {xlsx_filename}\n"
+                        f"- {csv_filename}\n\n"
+                        f"Location: {directory}")
                 else:
                     messagebox.showerror("Error", "Export failed. Check console for details.")
                     
@@ -1350,11 +1363,12 @@ class AnalysisTab(ttk.Frame):
             exported_files = self.optimizer.export_bo_plots(directory, base_path, date_str, file_format, dpi)
 
             if exported_files:
-                filenames = "\\n".join([os.path.basename(f) for f in exported_files])
-                messagebox.showinfo("Success",
-                                  f"Exported {len(exported_files)} BO plots\\n\\n"
-                                  f"Format: {file_format.upper()}, DPI: {dpi if file_format in ['png', 'tiff'] else 'Vector'}\\n\\n"
-                                  f"{filenames}\\n\\nLocation: {directory}")
+                # Build file list with proper formatting
+                filenames = "\n".join([f"- {os.path.basename(f)}" for f in exported_files])
+                messagebox.showinfo("Export Complete",
+                                  f"Files saved:\n"
+                                  f"{filenames}\n\n"
+                                  f"Location: {directory}")
             else:
                 messagebox.showwarning("Warning", "No plots were exported. Check console for details.")
 

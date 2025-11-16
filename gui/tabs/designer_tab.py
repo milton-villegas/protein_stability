@@ -2215,12 +2215,16 @@ class DesignerTab(ttk.Frame):
             else:
                 design_name = display_text
             
-            messagebox.showinfo("Export Successful!",
-                f"Files exported successfully!\n\n"
-                f"Design Type: {design_name}\n"
-                f"📊 Sample tracking:\n{xlsx_path}\n\n"
-                f"🤖 Opentrons volumes:\n{csv_path}\n\n"
-                f"Total: {total} combinations ({plates} plates)")
+            # Extract filenames and directory for clean message
+            xlsx_filename = os.path.basename(xlsx_path)
+            csv_filename = os.path.basename(csv_path)
+            directory = os.path.dirname(xlsx_path)
+
+            messagebox.showinfo("Export Complete",
+                f"Files saved:\n"
+                f"- {xlsx_filename}\n"
+                f"- {csv_filename}\n\n"
+                f"Location: {directory}")
         
         except Exception as e:
             messagebox.showerror("Export Failed", f"Error during export:\n\n{str(e)}")
