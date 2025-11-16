@@ -722,7 +722,7 @@ class BayesianOptimizer:
             name="doe_optimization",
             parameters=parameters,
             objectives={self.response_column: ObjectiveProperties(minimize=minimize)},
-            choose_generation_strategy_kwargs={"num_initialization_trials": 5}  # Use Sobol for first 5 trials if needed
+            choose_generation_strategy_kwargs={"num_initialization_trials": 0}  # Skip Sobol, go straight to BO
         )
         
         # Add existing data as completed trials using sanitized names
