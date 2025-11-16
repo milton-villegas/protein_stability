@@ -6,18 +6,7 @@ import pickle
 from datetime import datetime
 from typing import Dict, List, Optional
 import pandas as pd
-
-# Shared constants
-AVAILABLE_FACTORS = {
-    "buffer pH": "Buffer pH",
-    "buffer_concentration": "Buffer Conc (mM)",
-    "glycerol": "Glycerol (%)",
-    "salt": "Salt (mM)",
-    "dmso": "DMSO (%)",
-    "detergent": "Detergent (%)",
-}
-
-METADATA_COLUMNS = ['ID', 'Plate_96', 'Well_96', 'Well_384', 'Source', 'Batch']
+from utils.constants import AVAILABLE_FACTORS, METADATA_COLUMNS
 
 
 class DoEProject:
