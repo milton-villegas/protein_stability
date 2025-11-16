@@ -1095,8 +1095,17 @@ class BayesianOptimizer:
                 print(f"Successfully predicted all {len(parameterizations)} points")
 
             except Exception as e:
-                print(f"Batch prediction failed: {e}")
-                print("Falling back to suggestion density heatmap...")
+                print(f"\n{'='*60}")
+                print(f"❌ BATCH PREDICTION FAILED")
+                print(f"{'='*60}")
+                print(f"Error type: {type(e).__name__}")
+                print(f"Error message: {e}")
+                print(f"{'='*60}")
+                import traceback
+                traceback.print_exc()
+                print(f"{'='*60}")
+                print(f"Falling back to suggestion density heatmap...")
+                print(f"{'='*60}\n")
                 return self._create_suggestion_heatmap(factor_x_original, factor_y_original,
                                                        factor_x_sanitized, factor_y_sanitized,
                                                        X, Y)
