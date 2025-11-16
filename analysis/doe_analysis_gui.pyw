@@ -1082,8 +1082,14 @@ class BayesianOptimizer:
 
             # PANEL 3: Cross-Validation (Bottom-Left)
             ax3 = fig.add_subplot(gs[1, 0])
+            cv_success = False
             try:
-                from ax.modelbridge.cross_validation import cross_validate
+                # Try to import and run cross-validation
+                try:
+                    from ax.modelbridge.cross_validation import cross_validate
+                except ImportError:
+                    # Try alternative import for older Ax versions
+                    from ax.modelbridge import cross_validate
 
                 # Get model for CV
                 model = self.ax_client.generation_strategy.model
@@ -1120,11 +1126,18 @@ class BayesianOptimizer:
                         verticalalignment='top', bbox=dict(boxstyle='round',
                         facecolor='white', alpha=0.8, edgecolor='#CCCCCC'))
 
+                cv_success = True
+
+            except ImportError as e:
+                # CV module not available
+                ax3.text(0.5, 0.5, f'Cross-Validation\nRequires Ax >= 0.2.0\n\nInstall: pip install --upgrade ax-platform',
+                        ha='center', va='center', fontsize=9,
+                        transform=ax3.transAxes, style='italic', color='gray')
             except Exception as e:
-                # If CV fails, show simple text
+                # Other CV errors
                 ax3.text(0.5, 0.5, f'Cross-Validation\nNot Available\n\n{str(e)[:50]}',
                         ha='center', va='center', fontsize=9,
-                        transform=ax3.transAxes, style='italic')
+                        transform=ax3.transAxes, style='italic', color='gray')
 
             ax3.set_xlabel(f'Observed {self.response_column}', fontsize=10, fontweight='bold')
             ax3.set_ylabel(f'Predicted {self.response_column}', fontsize=10, fontweight='bold')
@@ -1307,7 +1320,12 @@ class BayesianOptimizer:
             # EXPORT 3: Cross-Validation
             fig3, ax3 = plt.subplots(1, 1, figsize=(9, 7))
             try:
-                from ax.modelbridge.cross_validation import cross_validate
+                # Try to import cross_validate
+                try:
+                    from ax.modelbridge.cross_validation import cross_validate
+                except ImportError:
+                    from ax.modelbridge import cross_validate
+
                 model = self.ax_client.generation_strategy.model
                 cv_results = cross_validate(model)
                 observed = []
@@ -1331,10 +1349,14 @@ class BayesianOptimizer:
                         transform=ax3.transAxes, fontsize=12, fontweight='bold',
                         verticalalignment='top', bbox=dict(boxstyle='round',
                         facecolor='white', alpha=0.9, edgecolor='#CCCCCC', linewidth=2))
-            except:
-                ax3.text(0.5, 0.5, 'Cross-Validation Not Available',
-                        ha='center', va='center', fontsize=12, fontweight='bold',
-                        transform=ax3.transAxes)
+            except ImportError:
+                ax3.text(0.5, 0.5, 'Cross-Validation\nRequires Ax >= 0.2.0\n\nUpgrade: pip install --upgrade ax-platform',
+                        ha='center', va='center', fontsize=11, fontweight='bold',
+                        transform=ax3.transAxes, color='gray')
+            except Exception as e:
+                ax3.text(0.5, 0.5, f'Cross-Validation Not Available\n\n{str(e)[:60]}',
+                        ha='center', va='center', fontsize=11, fontweight='bold',
+                        transform=ax3.transAxes, color='gray')
             ax3.set_xlabel(f'Observed {self.response_column}', fontsize=13, fontweight='bold', color='#333333')
             ax3.set_ylabel(f'Predicted {self.response_column}', fontsize=13, fontweight='bold', color='#333333')
             ax3.set_title('Model Quality: Cross-Validation',
