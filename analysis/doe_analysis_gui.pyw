@@ -90,11 +90,17 @@ class DataHandler:
             self.stock_concentrations = {}
             for _, row in stock_df.iterrows():
                 factor_name = str(row['Factor Name']).strip()
-                stock_value = float(row['Stock Value'])
-                
+                stock_value_raw = row['Stock Value']
+
+                # Skip rows with None or NaN values
+                if pd.isna(stock_value_raw):
+                    continue
+
+                stock_value = float(stock_value_raw)
+
                 # Smart matching algorithm - convert display name to internal key
                 internal_name = self._smart_factor_match(factor_name)
-                
+
                 if internal_name:
                     self.stock_concentrations[internal_name] = stock_value
             
