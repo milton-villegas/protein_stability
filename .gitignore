@@ -1,4 +1,8 @@
 .DS_Store
-.DS_Store
-.DS_Store
 __pycache__/
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+*.pyc
