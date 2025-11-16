@@ -1399,6 +1399,10 @@ class BayesianOptimizer:
         "Reducing Agent" → "reducing_agent" (categorical)
         "Reducing Agent (mM)" → "reducing_agent_concentration"
         """
+        # Handle None or empty column names
+        if column_name is None or (isinstance(column_name, str) and not column_name.strip()):
+            return None
+
         name = column_name.strip()
         
         # Special case: Buffer pH (keep as-is for BO)
@@ -1515,12 +1519,15 @@ class BayesianOptimizer:
             response_col_idx = None
             
             for idx, header in enumerate(headers):
+                # Skip None or empty headers
+                if header is None or (isinstance(header, str) and not header.strip()):
+                    continue
                 if header == 'Response':
                     response_col_idx = idx
                     continue
                 if header in ['ID', 'Plate_96', 'Well_96', 'Well_384', 'Source', 'Batch']:
                     continue
-                
+
                 # Use smart matching to map Excel column names to internal names
                 # This will work for any factor exported by ExpModel Suite
                 internal_name = self._smart_column_match(header)
