@@ -1013,7 +1013,12 @@ class BayesianOptimizer:
             idx = 0
             for i in range(X.shape[0]):
                 for j in range(X.shape[1]):
-                    pred_mean, pred_sem = predictions_list[idx][self.response_column]
+                    pred = predictions_list[idx]
+                    # Ax returns dict format: {response_name: (mean, variance)}
+                    mean_variance_tuple = pred[self.response_column]
+                    pred_mean = mean_variance_tuple[0]
+                    variance = mean_variance_tuple[1]
+                    pred_sem = np.sqrt(variance)
                     Z_mean[i, j] = pred_mean
                     Z_sem[i, j] = pred_sem
                     idx += 1
