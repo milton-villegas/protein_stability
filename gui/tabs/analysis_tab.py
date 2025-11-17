@@ -1154,9 +1154,10 @@ class AnalysisTab(ttk.Frame):
         self.recommendations_text.insert(tk.END, "-"*80 + "\n")
         
         if len(sig_factors) > 0:
-            # Get only main effect factors (not interactions)
-            main_sig_factors = [f for f in sig_factors if ':' not in f]
-            
+            # Get only main effect factors (not interactions or quadratic terms)
+            main_sig_factors = [f for f in sig_factors
+                               if ':' not in f and 'I(' not in f and '**' not in f]
+
             if main_sig_factors:
                 self.recommendations_text.insert(tk.END, "To INCREASE response, adjust these significant factors:\n\n")
                 for factor in main_sig_factors:
@@ -1172,9 +1173,15 @@ class AnalysisTab(ttk.Frame):
                     self.recommendations_text.insert(tk.END, f"  • {clean_factor:<30}: {direction}  (effect: {coef:+.4f})\n")
             
             interaction_factors = [f for f in sig_factors if ':' in f]
+            quadratic_factors = [f for f in sig_factors if 'I(' in f or '**' in f]
+
             if interaction_factors:
                 self.recommendations_text.insert(tk.END, f"\nWARNING: {len(interaction_factors)} interaction(s) detected!\n")
                 self.recommendations_text.insert(tk.END, "Optimal levels depend on factor combinations - see Interactions plot.\n")
+
+            if quadratic_factors:
+                self.recommendations_text.insert(tk.END, f"\nNOTE: {len(quadratic_factors)} quadratic term(s) detected!\n")
+                self.recommendations_text.insert(tk.END, "Response has curvature - optimal values may be within the tested range.\n")
         else:
             self.recommendations_text.insert(tk.END, "No significant factors found. Consider:\n")
             self.recommendations_text.insert(tk.END, "  • Testing wider factor ranges\n")
