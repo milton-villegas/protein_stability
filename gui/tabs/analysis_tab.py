@@ -425,7 +425,7 @@ class AnalysisTab(ttk.Frame):
                 # Check if "Response" column exists
                 if 'Response' not in self.handler.data.columns:
                     messagebox.showerror("Missing Response Column",
-                                       "Excel file must have a column named 'Response'\\n\\n"
+                                       "Excel file must have a column named 'Response'\n\n"
                                        "Please rename your response column to 'Response' and try again.")
                     self.status_var.set("Error: No 'Response' column found")
                     return
@@ -435,8 +435,8 @@ class AnalysisTab(ttk.Frame):
                 
             except Exception as e:
                 messagebox.showerror("File Load Failed",
-                    f"Could not open the selected Excel file.\\n\\n"
-                    f"Details: {str(e)}\\n\\n"
+                    f"Could not open the selected Excel file.\n\n"
+                    f"Details: {str(e)}\n\n"
                     f"Make sure the file is not open in another program.")
                 self.status_var.set("Error loading file")
     
@@ -511,8 +511,8 @@ class AnalysisTab(ttk.Frame):
 
         except Exception as e:
             messagebox.showerror("Analysis Failed",
-                f"Statistical analysis could not be completed.\\n\\n"
-                f"Error: {str(e)}\\n\\n"
+                f"Statistical analysis could not be completed.\n\n"
+                f"Error: {str(e)}\n\n"
                 f"Check that your data includes all required columns and valid numeric values.")
             self.status_var.set("Analysis failed")
             import traceback
@@ -995,8 +995,8 @@ class AnalysisTab(ttk.Frame):
                     f"    {directory}")
             except Exception as e:
                 messagebox.showerror("Export Failed",
-                    f"Could not export statistics to Excel.\\n\\n"
-                    f"Error: {str(e)}\\n\\n"
+                    f"Could not export statistics to Excel.\n\n"
+                    f"Error: {str(e)}\n\n"
                     f"Check that you have write permissions for the selected location.")
     
     def _prompt_for_stock_concentrations(self):
@@ -1214,23 +1214,23 @@ class AnalysisTab(ttk.Frame):
                               f"    {directory}")
         except Exception as e:
             messagebox.showerror("Export Failed",
-                f"Could not export plots to image files.\\n\\n"
-                f"Error: {str(e)}\\n\\n"
+                f"Could not export plots to image files.\n\n"
+                f"Error: {str(e)}\n\n"
                 f"Check that you have write permissions for the selected location.")
     
     def export_bo_batch(self):
         """Export BO suggestions to Excel and Opentrons CSV"""
         if not AX_AVAILABLE or not self.optimizer or not self.optimizer.is_initialized:
             messagebox.showerror("Bayesian Optimization Unavailable",
-                "Bayesian Optimization is not available or not initialized.\\n\\n"
+                "Bayesian Optimization is not available or not initialized.\n\n"
                 "Make sure you have installed ax-platform:\\n"
-                "pip install ax-platform\\n\\n"
+                "pip install ax-platform\n\n"
                 "Then run the analysis to initialize the optimizer.")
             return
         
         if not self.filepath:
             messagebox.showerror("No Data Loaded",
-                "No Excel file has been loaded.\\n\\n"
+                "No Excel file has been loaded.\n\n"
                 "Please load your experimental data before exporting BO suggestions.")
             return
         
@@ -1336,13 +1336,13 @@ class AnalysisTab(ttk.Frame):
                         f"    {directory}")
                 else:
                     messagebox.showerror("Export Failed",
-                        "Could not export BO batch to files.\\n\\n"
+                        "Could not export BO batch to files.\n\n"
                         "Check the console output for detailed error information.")
 
             except Exception as e:
                 messagebox.showerror("Export Failed",
-                    f"Could not export BO batch to files.\\n\\n"
-                    f"Error: {str(e)}\\n\\n"
+                    f"Could not export BO batch to files.\n\n"
+                    f"Error: {str(e)}\n\n"
                     f"Check that all parameters are valid and you have write permissions.")
 
         ttk.Button(button_frame, text="Export", command=do_export).pack(side='left', padx=5)
@@ -1352,9 +1352,9 @@ class AnalysisTab(ttk.Frame):
         """GUI wrapper for exporting BO plots"""
         if not AX_AVAILABLE or not self.optimizer or not self.optimizer.is_initialized:
             messagebox.showerror("Bayesian Optimization Unavailable",
-                "Bayesian Optimization is not available or not initialized.\\n\\n"
+                "Bayesian Optimization is not available or not initialized.\n\n"
                 "Make sure you have installed ax-platform:\\n"
-                "pip install ax-platform\\n\\n"
+                "pip install ax-platform\n\n"
                 "Then run the analysis to initialize the optimizer.")
             return
 
@@ -1406,8 +1406,8 @@ class AnalysisTab(ttk.Frame):
 
         except Exception as e:
             messagebox.showerror("Export Failed",
-                f"Could not export BO plots to image files.\\n\\n"
-                f"Error: {str(e)}\\n\\n"
+                f"Could not export BO plots to image files.\n\n"
+                f"Error: {str(e)}\n\n"
                 f"Check that you have write permissions for the selected location.")
 
 

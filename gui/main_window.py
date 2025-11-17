@@ -105,8 +105,8 @@ class ProteinDoESuite(tk.Tk):
                 self.update_status(f"Loaded: {filepath}")
             except Exception as e:
                 messagebox.showerror("Project Load Failed",
-                    f"Could not open the selected project file.\\n\\n"
-                    f"Details: {str(e)}\\n\\n"
+                    f"Could not open the selected project file.\n\n"
+                    f"Details: {str(e)}\n\n"
                     f"Make sure the file is a valid .doe project file.")
 
     def _save_project(self):
@@ -128,8 +128,8 @@ class ProteinDoESuite(tk.Tk):
                 self.update_status(f"Saved: {filepath}")
             except Exception as e:
                 messagebox.showerror("Project Save Failed",
-                    f"Could not save the project file.\\n\\n"
-                    f"Details: {str(e)}\\n\\n"
+                    f"Could not save the project file.\n\n"
+                    f"Details: {str(e)}\n\n"
                     f"Check that you have write permissions for the selected location.")
 
     # ========== Export/Import ==========

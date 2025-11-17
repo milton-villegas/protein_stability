@@ -1036,8 +1036,8 @@ class DesignerTab(ttk.Frame):
                     self._update_display()
                 except ValueError as e:
                     messagebox.showerror("Invalid Factor",
-                        f"Could not add factor '{factor_name}'.\\n\\n"
-                        f"Error: {str(e)}\\n\\n"
+                        f"Could not add factor '{factor_name}'.\n\n"
+                        f"Error: {str(e)}\n\n"
                         f"Check that the factor name and levels are valid.")
     
     def _quick_add_factor(self):
@@ -1083,8 +1083,8 @@ class DesignerTab(ttk.Frame):
                 self._update_display()
             except ValueError as e:
                 messagebox.showerror("Invalid Factor",
-                    f"Could not add factor.\\n\\n"
-                    f"Error: {str(e)}\\n\\n"
+                    f"Could not add factor.\n\n"
+                    f"Error: {str(e)}\n\n"
                     f"Check that the factor levels are valid and within the stock concentration.")
     
     def _edit_factor(self):
@@ -1123,8 +1123,8 @@ class DesignerTab(ttk.Frame):
                 self._update_display()
             except ValueError as e:
                 messagebox.showerror("Invalid Factor Update",
-                    f"Could not update factor '{factor_key}'.\\n\\n"
-                    f"Error: {str(e)}\\n\\n"
+                    f"Could not update factor '{factor_key}'.\n\n"
+                    f"Error: {str(e)}\n\n"
                     f"Check that the factor levels are valid and within the stock concentration.")
     
     def _delete_factor(self):
