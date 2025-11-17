@@ -130,10 +130,14 @@ class DataHandler:
         else:
             raise ValueError("Must specify either response_column or response_columns")
 
-        # All columns except responses and metadata are factors
+        # Get all potential response columns to exclude from factors
+        # This prevents unselected responses from being treated as factors
+        all_potential_responses = self.get_potential_response_columns()
+
+        # All columns except ALL potential responses and metadata are factors
         self.factor_columns = [
             col for col in self.data.columns
-            if col not in self.response_columns and col not in METADATA_COLUMNS
+            if col not in all_potential_responses and col not in METADATA_COLUMNS
         ]
 
         # Detect categorical vs numeric factors
