@@ -333,12 +333,14 @@ class TestDoEDesignerVolumeCalculations:
         designer = DoEDesigner()
 
         # Design that requires more volume than available
+        # Use values within valid range but with low stock concentrations
+        # to cause negative water volumes
         factors = {
-            'nacl': ['50000'],  # Very high concentration
-            'glycerol': ['95']   # Very high percentage
+            'nacl': ['5000'],    # High but within max (10000)
+            'glycerol': ['90']   # High but within max (100)
         }
         stock_concs = {
-            'nacl': 100000.0,  # Even with high stock, should fail
+            'nacl': 5000.0,   # Low stock: needs 100% of volume just for nacl!
             'glycerol': 100.0
         }
         final_volume = 200.0
