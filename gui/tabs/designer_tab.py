@@ -1694,7 +1694,126 @@ class DesignerTab(ttk.Frame):
         else:
             # No categorical factors, return numeric combinations in order
             return [tuple(combo) for combo in numeric_combinations]
-    
+
+    def _extract_unique_categorical_values(self, factors: Dict[str, List[str]],
+                                           factor_name: str,
+                                           skip_none: bool = False) -> List[str]:
+        """
+        Extract unique values for categorical factors.
+
+        Args:
+            factors: Dictionary of factor names to levels
+            factor_name: Name of the categorical factor
+            skip_none: If True, skip None/0/empty values
+
+        Returns:
+            Sorted list of unique values
+        """
+        if factor_name not in factors:
+            return []
+
+        unique_values = set()
+        for val in factors[factor_name]:
+            val_str = str(val).strip()
+
+            if skip_none:
+                # Skip empty, None, or 0 values
+                if val_str and val_str.lower() not in ['none', '0', 'nan', '']:
+                    unique_values.add(val_str)
+            else:
+                unique_values.add(val_str)
+
+        return sorted(unique_values)
+
+    def _build_excel_headers(self, factor_names: List[str]) -> List[str]:
+        """
+        Build Excel headers with proper ordering of categorical factors.
+
+        Args:
+            factor_names: List of factor names in the design
+
+        Returns:
+            List of column headers for Excel export
+        """
+        excel_headers = ["ID", "Plate_96", "Well_96", "Well_384", "Source", "Batch"]
+
+        # Define categorical factor pairings
+        categorical_pairs = {
+            "buffer pH": "buffer_concentration",
+            "detergent": "detergent_concentration",
+            "reducing_agent": "reducing_agent_concentration"
+        }
+
+        # Track which factors we've already added
+        added_factors = set()
+
+        # Add factors in order, but group categorical with their concentrations
+        for fn in factor_names:
+            if fn in added_factors:
+                continue
+
+            # Add the factor
+            excel_headers.append(AVAILABLE_FACTORS.get(fn, fn))
+            added_factors.add(fn)
+
+            # If it's a categorical factor with a paired concentration, add that next
+            if fn in categorical_pairs:
+                paired_factor = categorical_pairs[fn]
+                if paired_factor in factor_names and paired_factor not in added_factors:
+                    excel_headers.append(AVAILABLE_FACTORS.get(paired_factor, paired_factor))
+                    added_factors.add(paired_factor)
+
+        # Add Response column for TM data entry
+        excel_headers.append("Response")
+
+        return excel_headers
+
+    def _build_volume_headers(self, factor_names: List[str],
+                             buffer_ph_values: List[str],
+                             detergent_values: List[str],
+                             reducing_agent_values: List[str]) -> List[str]:
+        """
+        Build volume headers for Opentrons CSV.
+
+        Args:
+            factor_names: List of factor names
+            buffer_ph_values: List of unique buffer pH values
+            detergent_values: List of unique detergent types
+            reducing_agent_values: List of unique reducing agent types
+
+        Returns:
+            List of column headers for volume CSV
+        """
+        volume_headers = ["ID"]
+
+        # Add buffer pH columns (one column per pH value)
+        for ph in buffer_ph_values:
+            volume_headers.append(f"buffer_{ph}")
+
+        # Add detergent columns (one column per detergent type)
+        for det in detergent_values:
+            # Clean up name for column header (lowercase, replace spaces/hyphens with underscores)
+            det_clean = det.replace(' ', '_').replace('-', '_').lower()
+            volume_headers.append(det_clean)
+
+        # Add reducing agent columns (one column per reducing agent type)
+        for agent in reducing_agent_values:
+            # Clean up name for column header (lowercase, replace spaces/hyphens with underscores)
+            agent_clean = agent.replace(' ', '_').replace('-', '_').lower()
+            volume_headers.append(agent_clean)
+
+        # Add other volume headers (skip categorical factors and their concentrations)
+        for factor in factor_names:
+            if factor in ["buffer pH", "buffer_concentration", "detergent", "detergent_concentration",
+                         "reducing_agent", "reducing_agent_concentration"]:
+                continue
+            volume_headers.append(factor)
+
+        # Add water column at the end
+        volume_headers.append("water")
+
+        return volume_headers
+
     def _build_factorial_with_volumes(self) -> Tuple[List[str], List[List], List[str], List[List]]:
         """Build factorial design (full or LHS) and calculate volumes"""
         factors = self.model.get_factors()
@@ -1763,114 +1882,15 @@ class DesignerTab(ttk.Frame):
         else:
             raise ValueError(f"Unknown design type: {design_type}")
         
-        # Determine buffer pH values - make unique pH list for Opentrons
-        buffer_ph_values = []
-        if "buffer pH" in factors:
-            # Extract unique pH values from the levels
-            unique_phs = set()
-            for ph_val in factors["buffer pH"]:
-                unique_phs.add(str(ph_val).strip())
-            buffer_ph_values = sorted(unique_phs)
-        
-        # Determine detergent values - make unique detergent list for Opentrons
-        detergent_values = []
-        if "detergent" in factors:
-            # Extract unique detergent values from the levels
-            unique_detergents = set()
-            for det_val in factors["detergent"]:
-                det_str = str(det_val).strip()
-                # Skip empty, None, or 0 values
-                if det_str and det_str.lower() not in ['none', '0', 'nan', '']:
-                    unique_detergents.add(det_str)
-            detergent_values = sorted(unique_detergents)
-        
-        # Determine reducing agent values - make unique reducing agent list for Opentrons
-        reducing_agent_values = []
-        if "reducing_agent" in factors:
-            # Extract unique reducing agent values from the levels
-            unique_agents = set()
-            for agent_val in factors["reducing_agent"]:
-                agent_str = str(agent_val).strip()
-                # Skip empty, None, or 0 values
-                if agent_str and agent_str.lower() not in ['none', '0', 'nan', '']:
-                    unique_agents.add(agent_str)
-            reducing_agent_values = sorted(unique_agents)
-        
-        # Build Excel headers - group categorical factors with their concentration columns
-        excel_headers = ["ID", "Plate_96", "Well_96", "Well_384", "Source", "Batch"]
-        
-        # Define categorical factor pairings
-        categorical_pairs = {
-            "buffer pH": "buffer_concentration",
-            "detergent": "detergent_concentration",
-            "reducing_agent": "reducing_agent_concentration"
-        }
-        
-        # Track which factors we've already added
-        added_factors = set()
-        
-        # Add factors in order, but group categorical with their concentrations
-        for fn in factor_names:
-            if fn in added_factors:
-                continue
-                
-            # Add the factor
-            excel_headers.append(AVAILABLE_FACTORS.get(fn, fn))
-            added_factors.add(fn)
-            
-            # If it's a categorical factor with a paired concentration, add that next
-            if fn in categorical_pairs:
-                paired_factor = categorical_pairs[fn]
-                if paired_factor in factor_names and paired_factor not in added_factors:
-                    excel_headers.append(AVAILABLE_FACTORS.get(paired_factor, paired_factor))
-                    added_factors.add(paired_factor)
-        
-        # Add Response column for TM data entry
-        excel_headers.append("Response")
-        
-        # Build volume headers for Opentrons CSV
-        volume_headers = ["ID"]
-        
-        # Determine detergent values - make unique detergent list for Opentrons
-        detergent_values = []
-        if "detergent" in factors:
-            # Extract unique detergent values from the levels
-            unique_detergents = set()
-            for det_val in factors["detergent"]:
-                det_str = str(det_val).strip()
-                # Skip empty, None, or 0 values
-                if det_str and det_str.lower() not in ['none', '0', 'nan', '']:
-                    unique_detergents.add(det_str)
-            detergent_values = sorted(unique_detergents)
-        
-        # Add buffer pH columns (one column per pH value)
-        if "buffer pH" in factors:
-            for ph in buffer_ph_values:
-                volume_headers.append(f"buffer_{ph}")
-        
-        # Add detergent columns (one column per detergent type)
-        if "detergent" in factors:
-            for det in detergent_values:
-                # Clean up name for column header (lowercase, replace spaces/hyphens with underscores)
-                det_clean = det.replace(' ', '_').replace('-', '_').lower()
-                volume_headers.append(det_clean)
-        
-        # Add reducing agent columns (one column per reducing agent type)
-        if "reducing_agent" in factors:
-            for agent in reducing_agent_values:
-                # Clean up name for column header (lowercase, replace spaces/hyphens with underscores)
-                agent_clean = agent.replace(' ', '_').replace('-', '_').lower()
-                volume_headers.append(agent_clean)
-        
-        # Add other volume headers (skip categorical factors and their concentrations)
-        for factor in factor_names:
-            if factor in ["buffer pH", "buffer_concentration", "detergent", "detergent_concentration",
-                         "reducing_agent", "reducing_agent_concentration"]:
-                continue
-            volume_headers.append(factor)
-        
-        # Add water column at the end
-        volume_headers.append("water")
+        # Extract unique values for categorical factors
+        buffer_ph_values = self._extract_unique_categorical_values(factors, "buffer pH")
+        detergent_values = self._extract_unique_categorical_values(factors, "detergent", skip_none=True)
+        reducing_agent_values = self._extract_unique_categorical_values(factors, "reducing_agent", skip_none=True)
+
+        # Build headers
+        excel_headers = self._build_excel_headers(factor_names)
+        volume_headers = self._build_volume_headers(factor_names, buffer_ph_values,
+                                                     detergent_values, reducing_agent_values)
         
         # Calculate volumes
         excel_rows = []
