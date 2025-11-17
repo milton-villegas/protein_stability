@@ -610,13 +610,12 @@ class AnalysisTab(ttk.Frame):
 
                 for response_name in self.selected_responses:
                     chosen_model = self.chosen_models[response_name]
+                    # Fit model for this specific response
                     self.all_results[response_name] = self.analyzer.fit_model(
-                        chosen_model
+                        chosen_model,
+                        response_name=response_name
                     )
-                    # Update formula for this response
-                    formula = self.analyzer.build_formula(chosen_model, response_name=response_name)
-                    model = self.analyzer.model
-                    self.all_results[response_name]['model_object'] = model
+                    self.all_results[response_name]['model_object'] = self.analyzer.model
 
                 # Calculate main effects for all responses
                 self.all_main_effects = self.analyzer.calculate_main_effects_all_responses()
