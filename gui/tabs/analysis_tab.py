@@ -92,11 +92,11 @@ class AnalysisTab(ttk.Frame):
         self.selected_responses = []  # List of selected response column names
         self.response_directions = {}  # {column_name: 'maximize' or 'minimize'}
 
-        # Results tab reference (will be created on demand)
-        self.results_tab = None
-
         # Setup GUI
         self.setup_gui()
+
+        # Create Results tab (always visible, empty until analysis runs)
+        self.create_results_tab()
         
     def setup_gui(self):
         """Setup GUI layout"""
@@ -160,19 +160,15 @@ class AnalysisTab(ttk.Frame):
 
     def create_results_tab(self):
         """Create the Results tab with results notebook and export buttons"""
-        if self.results_tab is not None:
-            # Results tab already created
-            return
-
         # Get the parent notebook from main_window
         parent_notebook = self.main_window.notebook
 
         # Create Results tab
-        self.results_tab = ttk.Frame(parent_notebook)
-        parent_notebook.add(self.results_tab, text="Results")
+        results_tab = ttk.Frame(parent_notebook)
+        parent_notebook.add(results_tab, text="Results")
 
         # Export buttons at top
-        export_frame = ttk.LabelFrame(self.results_tab, text="Export Results", padding=10)
+        export_frame = ttk.LabelFrame(results_tab, text="Export Results", padding=10)
         export_frame.pack(fill='x', padx=10, pady=5)
 
         self.export_stats_btn = ttk.Button(export_frame, text="Export Statistics (.xlxs)",
@@ -184,7 +180,7 @@ class AnalysisTab(ttk.Frame):
         self.export_plots_btn.pack(side='left', padx=5)
 
         # Results notebook
-        results_frame = ttk.LabelFrame(self.results_tab, text="Analysis Results", padding=5)
+        results_frame = ttk.LabelFrame(results_tab, text="Analysis Results", padding=5)
         results_frame.pack(fill='both', expand=True, padx=10, pady=5)
 
         results_container = ttk.Frame(results_frame)
@@ -620,9 +616,6 @@ class AnalysisTab(ttk.Frame):
             self.results = self.analyzer.fit_model(chosen_model)
             self.main_effects = self.analyzer.calculate_main_effects()
 
-            # Create Results tab if it doesn't exist
-            self.create_results_tab()
-
             self.display_statistics()
             self.display_plots()
             self.display_recommendations()
@@ -638,20 +631,13 @@ class AnalysisTab(ttk.Frame):
             chosen_model_name = self.analyzer.MODEL_TYPES[chosen_model]
             self.status_var.set(f"Analysis complete! Model: {chosen_model_name} | R² = {self.results['model_stats']['R-squared']:.4f}")
 
-            # Switch to Results tab
-            parent_notebook = self.main_window.notebook
-            for i in range(parent_notebook.index('end')):
-                if parent_notebook.tab(i, 'text') == "Results":
-                    parent_notebook.select(i)
-                    break
-
             messagebox.showinfo("Success",
                               f"Analysis completed successfully!\n\n"
                               f"{mode_description} Model: {chosen_model_name}\n"
                               f"Observations: {self.results['model_stats']['Observations']}\n"
                               f"R-squared: {self.results['model_stats']['R-squared']:.4f}\n"
                               f"Adjusted R-squared: {self.results['model_stats']['Adjusted R-squared']:.4f}\n\n"
-                              f"All models compared. See Statistics tab for details.")
+                              f"Check the Results tab for detailed analysis.")
 
         except Exception as e:
             messagebox.showerror("Analysis Failed",
