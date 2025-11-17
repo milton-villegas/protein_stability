@@ -78,6 +78,9 @@ class ProteinDoESuite(tk.Tk):
         self.notebook.add(self.designer_tab, text="Design")
         self.notebook.add(self.analysis_tab, text="Analysis")
 
+        # Create Results tab last (always visible, empty until analysis runs)
+        self.analysis_tab.create_results_tab()
+
     # ========== Project Management ==========
 
     def _new_project(self):

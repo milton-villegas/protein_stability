@@ -94,9 +94,6 @@ class AnalysisTab(ttk.Frame):
 
         # Setup GUI
         self.setup_gui()
-
-        # Create Results tab (always visible, empty until analysis runs)
-        self.create_results_tab()
         
     def setup_gui(self):
         """Setup GUI layout"""
