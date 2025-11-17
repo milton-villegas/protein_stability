@@ -745,6 +745,17 @@ class BayesianOptimizer:
                 # Extract predictions and uncertainty into arrays
                 Z_mean = np.zeros_like(X)
                 Z_sem = np.zeros_like(X)
+
+                # DEBUG: Check structure of first prediction
+                if len(predictions_list) > 0:
+                    first_pred = predictions_list[0]
+                    print(f"DEBUG: Prediction structure type: {type(first_pred)}")
+                    print(f"DEBUG: First prediction: {first_pred}")
+                    if isinstance(first_pred, tuple):
+                        print(f"DEBUG: Tuple length: {len(first_pred)}")
+                        for i, item in enumerate(first_pred):
+                            print(f"DEBUG: Tuple[{i}] type: {type(item)}, value: {item}")
+
                 idx = 0
                 for i in range(X.shape[0]):
                     for j in range(X.shape[1]):
@@ -754,7 +765,6 @@ class BayesianOptimizer:
                         if isinstance(pred, tuple) and len(pred) == 2:
                             mean_dict, cov_dict = pred
                             pred_mean = mean_dict[self.response_column]
-                            # Covariance is dict of dicts: {metric: {metric: variance}}
                             variance = cov_dict[self.response_column][self.response_column]
                             pred_sem = np.sqrt(variance)
                         else:

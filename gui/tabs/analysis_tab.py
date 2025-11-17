@@ -556,18 +556,10 @@ class AnalysisTab(ttk.Frame):
 
         try:
             # Detect which columns are factors vs response
-            print(f"DEBUG: Calling detect_columns with: {self.selected_responses}")
             self.handler.detect_columns(response_columns=self.selected_responses)
             clean_data = self.handler.preprocess_data()
 
             # Pass cleaned data to analyzer with all selected responses
-            print(f"DEBUG: Passing data to analyzer:")
-            print(f"  - Response columns: {self.selected_responses}")
-            print(f"  - Factor columns: {self.handler.factor_columns}")
-            print(f"  - Categorical factors: {self.handler.categorical_factors}")
-            print(f"  - Numeric factors: {self.handler.numeric_factors}")
-            print(f"  - Data shape: {clean_data.shape}")
-
             self.analyzer.set_data(
                 data=clean_data,
                 factor_columns=self.handler.factor_columns,
@@ -575,9 +567,6 @@ class AnalysisTab(ttk.Frame):
                 numeric_factors=self.handler.numeric_factors,
                 response_columns=self.selected_responses
             )
-
-            print(f"DEBUG: Analyzer set. Analyzer response_column: {self.analyzer.response_column}")
-            print(f"DEBUG: Analyzer response_columns: {self.analyzer.response_columns}")
 
             # Get user's model selection
             selected_option = self.model_selection_var.get()
@@ -593,11 +582,6 @@ class AnalysisTab(ttk.Frame):
             }
 
             selected_model = model_mapping[selected_option]
-
-            # Debug: check which path we're taking
-            print(f"DEBUG: Number of selected responses: {len(self.selected_responses)}")
-            print(f"DEBUG: Taking {'MULTI' if len(self.selected_responses) > 1 else 'SINGLE'}-response path")
-            print(f"DEBUG: Selected model from dropdown: {selected_model}")
 
             # Multi-response analysis: analyze each response separately
             if len(self.selected_responses) > 1:
@@ -654,20 +638,16 @@ class AnalysisTab(ttk.Frame):
 
             else:
                 # Single response analysis (backward compatible)
-                print(f"DEBUG: SINGLE-response path - analyzing: {self.selected_responses[0]}")
                 self.status_var.set("Comparing all models...")
                 self.update()
 
-                print(f"DEBUG: Calling compare_all_models() for single response")
                 self.model_comparison = self.analyzer.compare_all_models()
 
                 # Determine which model to use
                 if selected_model is None:
                     # AUTO MODE - select best model
-                    print(f"DEBUG: AUTO mode - selecting best model from comparison")
                     self.model_selection = self.analyzer.select_best_model(self.model_comparison)
                     chosen_model = self.model_selection['recommended_model']
-                    print(f"DEBUG: Selected model: {chosen_model} (reason: {self.model_selection.get('reason', 'N/A')})")
 
                     if chosen_model is None:
                         raise ValueError("No models could be fitted successfully. Check your data.")
@@ -675,7 +655,6 @@ class AnalysisTab(ttk.Frame):
                     mode_description = "Auto-selected"
                 else:
                     # MANUAL MODE - use user's choice
-                    print(f"DEBUG: MANUAL mode - using user-selected model: {selected_model}")
                     chosen_model = selected_model
                     self.model_selection = {'recommended_model': chosen_model, 'reason': 'User selected'}
                     mode_description = "User selected"
@@ -684,13 +663,8 @@ class AnalysisTab(ttk.Frame):
                 self.update()
 
                 # Fit the chosen model for detailed analysis
-                print(f"DEBUG: Re-fitting chosen model '{chosen_model}' for detailed analysis")
                 self.results = self.analyzer.fit_model(chosen_model)
-                print(f"DEBUG: Model fitted. R²={self.results['model_stats'].get('R-squared', 'N/A')}")
-
-                print(f"DEBUG: Calculating main effects")
                 self.main_effects = self.analyzer.calculate_main_effects()
-                print(f"DEBUG: Main effects calculated. Keys: {list(self.main_effects.keys()) if self.main_effects else 'None'}")
 
             self.display_statistics()
             self.display_plots()

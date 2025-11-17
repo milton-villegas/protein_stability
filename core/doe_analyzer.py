@@ -358,7 +358,6 @@ class DoEAnalyzer:
                     fitted_model = self.fit_reduced_quadratic(p_remove=BACKWARD_ELIMINATION_THRESHOLD, response_name=response)
                 else:
                     formula = self.build_formula(model_type, response_name=response)
-                    print(f"DEBUG: Fitting {model_type} model with formula: {formula[:100]}...")
                     fitted_model = smf.ols(formula=formula, data=self.data).fit()
 
                 stats = {
@@ -374,13 +373,10 @@ class DoEAnalyzer:
                     'F p-value': fitted_model.f_pvalue
                 }
 
-                print(f"DEBUG:   -> {model_type}: R²={fitted_model.rsquared:.4f}, Adj R²={fitted_model.rsquared_adj:.4f}")
-
                 comparison_data['models'][model_type] = stats
                 comparison_data['fitted_models'][model_type] = fitted_model
 
             except Exception as e:
-                print(f"DEBUG:   -> {model_type}: FAILED - {str(e)[:60]}")
                 comparison_data['errors'][model_type] = str(e)
 
         if comparison_data['models']:
