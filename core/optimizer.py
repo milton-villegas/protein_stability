@@ -207,7 +207,7 @@ class BayesianOptimizer:
                     break
 
             if len(suggestions_x) < 5:
-                print("Could not generate enough suggestions for heatmap")
+                print("⚠ Could not generate enough suggestions for heatmap")
                 return None
 
             # Create 2D histogram / density plot
@@ -258,7 +258,7 @@ class BayesianOptimizer:
             return fig
 
         except Exception as e:
-            print(f"Error creating suggestion heatmap: {e}")
+            print(f"❌ Error creating suggestion heatmap: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -319,7 +319,7 @@ class BayesianOptimizer:
         # Fallback: Sobol sensitivity analysis - works for all model types
         # Uses Ax's built-in global sensitivity analysis with Sobol indices
         try:
-            print("  Using Sobol sensitivity analysis for factor selection...")
+            print("ℹ️  Using Sobol sensitivity analysis for factor selection...")
 
             # Try to use Ax's built-in Sobol sensitivity analysis
             from ax.analysis.plotly.sensitivity import SensitivityAnalysisPlot
@@ -363,7 +363,7 @@ class BayesianOptimizer:
                                 dtype = sobol_data.get('dtype', 'f8')
                                 sobol_values = np.frombuffer(binary_data, dtype=dtype)
 
-                                print(f"  Decoded {len(sobol_values)} Sobol indices from analysis")
+                                print(f"ℹ️  Decoded {len(sobol_values)} Sobol indices from analysis")
 
                                 # Map parameter names to Sobol values
                                 for param_name, sobol_val in zip(param_names, sobol_values):
@@ -374,7 +374,7 @@ class BayesianOptimizer:
                                             sensitivities[orig_factor] = float(sobol_val)
                                             break
                 else:
-                    print(f"  No Sobol data found in analysis")
+                    print(f"ℹ️  No Sobol data found in analysis")
 
                 if len(sensitivities) >= 2:
                     print(f"✓ Using Sobol sensitivity indices for factor selection")
@@ -386,12 +386,12 @@ class BayesianOptimizer:
                     print(f"  Selected most important factors: {selected}")
                     return selected
                 else:
-                    print(f"  Could not extract enough Sobol indices (got {len(sensitivities)})")
+                    print(f"⚠ Could not extract enough Sobol indices (got {len(sensitivities)})")
 
         except ImportError:
-            print(f"  Sobol analysis not available (Ax version may not support it)")
+            print(f"ℹ️  Sobol analysis not available (Ax version may not support it)")
         except Exception as e:
-            print(f"  Sobol analysis failed: {e}")
+            print(f"⚠ Sobol analysis failed: {e}")
             # Continue to range-based fallback
 
         # Ultimate fallback: largest parameter ranges
@@ -405,7 +405,7 @@ class BayesianOptimizer:
         sorted_factors = sorted(factor_ranges.items(), key=lambda x: x[1], reverse=True)
         selected = [f[0] for f in sorted_factors[:2]]
 
-        print(f"  Selected factors based on range: {selected}")
+        print(f"ℹ️  Selected factors based on range: {selected}")
         return selected
     
     def get_acquisition_plot(self):
@@ -429,7 +429,7 @@ class BayesianOptimizer:
             factor_x_sanitized = self.reverse_mapping[factor_x_original]
             factor_y_sanitized = self.reverse_mapping[factor_y_original]
 
-            print(f"Creating comprehensive BO plots for: {factor_x_original} vs {factor_y_original}")
+            print(f"ℹ️  Creating comprehensive BO plots for: {factor_x_original} vs {factor_y_original}")
 
             # Create grid
             x_min, x_max = self.factor_bounds[factor_x_original]
@@ -437,7 +437,7 @@ class BayesianOptimizer:
 
             # Check if bounds are valid (not constant)
             if x_min == x_max or y_min == y_max:
-                print(f"Factor has no variation: {factor_x_original}={x_min} or {factor_y_original}={y_min}")
+                print(f"⚠ Factor has no variation: {factor_x_original}={x_min} or {factor_y_original}={y_min}")
                 return None
 
             # Add small padding to bounds
@@ -473,7 +473,7 @@ class BayesianOptimizer:
                     params[factor_y_sanitized] = float(Y[i, j])
                     parameterizations.append(params)
 
-            print(f"Predicting {len(parameterizations)} points using BO model...")
+            print(f"ℹ️  Predicting {len(parameterizations)} points using BO model...")
 
             # Get predictions with uncertainty
             try:
@@ -493,7 +493,7 @@ class BayesianOptimizer:
                         Z_sem[i, j] = pred_sem
                         idx += 1
 
-                print(f"Successfully predicted all {len(parameterizations)} points")
+                print(f"✓ Successfully predicted all {len(parameterizations)} points")
 
             except Exception as e:
                 print(f"\n{'='*60}")

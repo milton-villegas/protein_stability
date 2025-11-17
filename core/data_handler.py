@@ -54,7 +54,7 @@ class DataHandler:
 
         except Exception as e:
             # Sheet doesn't exist or error reading - that's okay, will use dialog
-            print(f"Note: Stock concentrations sheet not found or error reading ({e})")
+            print(f"ℹ️  Note: Stock concentrations sheet not found or error reading ({e})")
             self.stock_concentrations = {}
 
     def get_stock_concentrations(self) -> dict:
