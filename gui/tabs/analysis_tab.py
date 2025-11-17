@@ -111,13 +111,22 @@ class AnalysisTab(ttk.Frame):
         config_frame = ttk.LabelFrame(self, text="2. Configure Analysis", padding=10)
         config_frame.pack(fill='x', padx=10, pady=5)
         
-        # Model Type row with info button - AUTO SELECTION
+        # Model Type row with info button
         ttk.Label(config_frame, text="Model Selection:").grid(row=0, column=0, sticky='w', padx=5, pady=5)
 
-        # Label indicating automatic selection
-        auto_label = ttk.Label(config_frame, text="✓ Automatic (compares all 5 models)",
-                              foreground='#029E73', font=('TkDefaultFont', 9, 'bold'))
-        auto_label.grid(row=0, column=1, sticky='w', padx=5, pady=5)
+        # Dropdown for model selection
+        model_options = [
+            'Auto (Recommended)',
+            'Mean (intercept only)',
+            'Linear (main effects)',
+            'Interactions (2-way)',
+            'Quadratic (full)',
+            'Reduced (backward elimination)'
+        ]
+        self.model_selection_var = tk.StringVar(value='Auto (Recommended)')
+        self.model_dropdown = ttk.Combobox(config_frame, textvariable=self.model_selection_var,
+                                          values=model_options, state='readonly', width=30)
+        self.model_dropdown.grid(row=0, column=1, sticky='w', padx=5, pady=5)
 
         # info button
         info_btn = ttk.Button(config_frame, text="?", width=2, command=self.show_model_guide)
@@ -466,24 +475,48 @@ class AnalysisTab(ttk.Frame):
                 response_column=self.handler.response_column
             )
 
-            # AUTOMATIC MODEL SELECTION - Compare all 5 models
+            # Get user's model selection
+            selected_option = self.model_selection_var.get()
+
+            # Map dropdown options to model types
+            model_mapping = {
+                'Auto (Recommended)': None,
+                'Mean (intercept only)': 'mean',
+                'Linear (main effects)': 'linear',
+                'Interactions (2-way)': 'interactions',
+                'Quadratic (full)': 'quadratic',
+                'Reduced (backward elimination)': 'reduced'
+            }
+
+            selected_model = model_mapping[selected_option]
+
+            # Always compare all models for reference
             self.status_var.set("Comparing all models...")
             self.update()
 
             self.model_comparison = self.analyzer.compare_all_models()
-            self.model_selection = self.analyzer.select_best_model(self.model_comparison)
 
-            # Use the recommended model for detailed analysis
-            recommended_model = self.model_selection['recommended_model']
+            # Determine which model to use
+            if selected_model is None:
+                # AUTO MODE - select best model
+                self.model_selection = self.analyzer.select_best_model(self.model_comparison)
+                chosen_model = self.model_selection['recommended_model']
 
-            if recommended_model is None:
-                raise ValueError("No models could be fitted successfully. Check your data.")
+                if chosen_model is None:
+                    raise ValueError("No models could be fitted successfully. Check your data.")
 
-            self.status_var.set(f"Using recommended model: {recommended_model}...")
+                mode_description = "Auto-selected"
+            else:
+                # MANUAL MODE - use user's choice
+                chosen_model = selected_model
+                self.model_selection = {'recommended_model': chosen_model, 'reason': 'User selected'}
+                mode_description = "User selected"
+
+            self.status_var.set(f"Using {mode_description.lower()} model: {chosen_model}...")
             self.update()
 
-            # Fit the recommended model for detailed analysis
-            self.results = self.analyzer.fit_model(recommended_model)
+            # Fit the chosen model for detailed analysis
+            self.results = self.analyzer.fit_model(chosen_model)
             self.main_effects = self.analyzer.calculate_main_effects()
 
             self.display_statistics()
@@ -497,17 +530,17 @@ class AnalysisTab(ttk.Frame):
             self.export_stats_btn.config(state='normal')
             self.export_plots_btn.config(state='normal')
 
-            # Show completion status with recommended model
-            recommended_model_name = self.analyzer.MODEL_TYPES[recommended_model]
-            self.status_var.set(f"Analysis complete! Model: {recommended_model_name} | R² = {self.results['model_stats']['R-squared']:.4f}")
+            # Show completion status
+            chosen_model_name = self.analyzer.MODEL_TYPES[chosen_model]
+            self.status_var.set(f"Analysis complete! Model: {chosen_model_name} | R² = {self.results['model_stats']['R-squared']:.4f}")
 
             messagebox.showinfo("Success",
                               f"Analysis completed successfully!\n\n"
-                              f"Recommended Model: {recommended_model_name}\n"
+                              f"{mode_description} Model: {chosen_model_name}\n"
                               f"Observations: {self.results['model_stats']['Observations']}\n"
                               f"R-squared: {self.results['model_stats']['R-squared']:.4f}\n"
                               f"Adjusted R-squared: {self.results['model_stats']['Adjusted R-squared']:.4f}\n\n"
-                              f"All 5 models were compared. See Statistics tab for details.")
+                              f"All models compared. See Statistics tab for details.")
 
         except Exception as e:
             messagebox.showerror("Analysis Failed",
@@ -526,9 +559,9 @@ class AnalysisTab(ttk.Frame):
         self.stats_text.insert(tk.END, "DOE ANALYSIS RESULTS\n")
         self.stats_text.insert(tk.END, "="*80 + "\n\n")
 
-        # MODEL COMPARISON SECTION - Show all models and recommendation
+        # MODEL COMPARISON SECTION - Show all models and selection
         if hasattr(self, 'model_comparison') and self.model_comparison:
-            self.stats_text.insert(tk.END, "📊 AUTOMATIC MODEL SELECTION\n")
+            self.stats_text.insert(tk.END, "📊 MODEL COMPARISON\n")
             self.stats_text.insert(tk.END, "-"*80 + "\n\n")
 
             # Display comparison table
@@ -539,13 +572,14 @@ class AnalysisTab(ttk.Frame):
                 self.stats_text.insert(tk.END, "Model Comparison (all 5 models fitted):\n\n")
 
                 # Create formatted header
-                header = f"{'Model':<30} {'Adj R²':>10} {'BIC':>10} {'RMSE':>10} {'DF':>6}  {'Recommend':>10}\n"
+                header = f"{'Model':<30} {'Adj R²':>10} {'BIC':>10} {'RMSE':>10} {'DF':>6}  {'Selected':>10}\n"
                 self.stats_text.insert(tk.END, header)
                 self.stats_text.insert(tk.END, "-"*80 + "\n")
 
-                # Get recommendation
+                # Get selected/recommended model
                 recommendation = self.model_selection
                 recommended_model = recommendation['recommended_model']
+                is_auto = self.model_selection_var.get() == 'Auto (Recommended)'
 
                 # Display each model
                 model_order = ['mean', 'linear', 'interactions', 'quadratic', 'reduced']
@@ -554,9 +588,9 @@ class AnalysisTab(ttk.Frame):
                         stats = self.model_comparison['models'][model_type]
                         model_name = stats['Model Type']
 
-                        # Mark recommended model with checkmark
+                        # Mark selected model
                         if model_type == recommended_model:
-                            marker = "✓ BEST"
+                            marker = "✓ AUTO" if is_auto else "✓ USER"
                         else:
                             marker = ""
 
