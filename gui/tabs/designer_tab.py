@@ -558,6 +558,15 @@ class FactorEditDialog(tk.Toplevel):
 
 
 class DesignerTab(ttk.Frame):
+    """DoE Designer GUI tab for creating experimental designs"""
+
+    # Define categorical factor pairings as class constant
+    CATEGORICAL_PAIRS = {
+        "buffer pH": "buffer_concentration",
+        "detergent": "detergent_concentration",
+        "reducing_agent": "reducing_agent_concentration"
+    }
+
     def __init__(self, parent, project, main_window):
         super().__init__(parent)
         self.project = project
@@ -1737,13 +1746,6 @@ class DesignerTab(ttk.Frame):
         """
         excel_headers = ["ID", "Plate_96", "Well_96", "Well_384", "Source", "Batch"]
 
-        # Define categorical factor pairings
-        categorical_pairs = {
-            "buffer pH": "buffer_concentration",
-            "detergent": "detergent_concentration",
-            "reducing_agent": "reducing_agent_concentration"
-        }
-
         # Track which factors we've already added
         added_factors = set()
 
@@ -1757,8 +1759,8 @@ class DesignerTab(ttk.Frame):
             added_factors.add(fn)
 
             # If it's a categorical factor with a paired concentration, add that next
-            if fn in categorical_pairs:
-                paired_factor = categorical_pairs[fn]
+            if fn in self.CATEGORICAL_PAIRS:
+                paired_factor = self.CATEGORICAL_PAIRS[fn]
                 if paired_factor in factor_names and paired_factor not in added_factors:
                     excel_headers.append(AVAILABLE_FACTORS.get(paired_factor, paired_factor))
                     added_factors.add(paired_factor)
@@ -1916,10 +1918,10 @@ class DesignerTab(ttk.Frame):
                 # Add the factor value
                 excel_row.append(row_dict.get(fn, ""))
                 added_factors_row.add(fn)
-                
+
                 # If it's a categorical factor with a paired concentration, add that next
-                if fn in categorical_pairs:
-                    paired_factor = categorical_pairs[fn]
+                if fn in self.CATEGORICAL_PAIRS:
+                    paired_factor = self.CATEGORICAL_PAIRS[fn]
                     if paired_factor in factor_names and paired_factor not in added_factors_row:
                         excel_row.append(row_dict.get(paired_factor, ""))
                         added_factors_row.add(paired_factor)
