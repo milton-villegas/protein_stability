@@ -3,7 +3,7 @@ Data loading and preprocessing
 Extracted from analysis_tab.py
 """
 import pandas as pd
-from utils.constants import METADATA_COLUMNS
+from utils.constants import METADATA_COLUMNS, AVAILABLE_FACTORS
 from utils.sanitization import smart_factor_match
 
 
@@ -63,16 +63,31 @@ class DataHandler:
         return self.stock_concentrations.copy()
 
     def get_potential_response_columns(self):
-        """Get list of numeric columns that could be responses (excluding metadata)"""
+        """Get list of numeric columns that could be responses (excluding metadata and factors)"""
         if self.data is None:
             return []
+
+        # Build list of factor names to exclude (both internal and display names)
+        factor_names_to_exclude = set()
+        for internal_name, display_name in AVAILABLE_FACTORS.items():
+            factor_names_to_exclude.add(internal_name.lower())
+            factor_names_to_exclude.add(display_name.lower())
+            # Also add without units in parentheses
+            if '(' in display_name:
+                base_name = display_name.split('(')[0].strip().lower()
+                factor_names_to_exclude.add(base_name)
 
         potential_responses = []
         for col in self.data.columns:
             if col not in METADATA_COLUMNS:
                 # Check if column is numeric
                 if pd.api.types.is_numeric_dtype(self.data[col]):
-                    potential_responses.append(col)
+                    # Exclude if it matches a known factor name
+                    col_lower = col.lower()
+                    col_base = col.split('(')[0].strip().lower() if '(' in col else col_lower
+
+                    if col_lower not in factor_names_to_exclude and col_base not in factor_names_to_exclude:
+                        potential_responses.append(col)
 
         return potential_responses
 

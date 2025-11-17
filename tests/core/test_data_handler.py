@@ -244,10 +244,10 @@ class TestDataHandlerMultiResponse:
 
         potential = handler.get_potential_response_columns()
 
-        # Should include numeric columns, exclude metadata
+        # Should include response columns, exclude factors, metadata, and categorical
         assert 'Response' in potential
-        assert 'NaCl' in potential
-        assert 'pH' in potential
+        assert 'NaCl' not in potential  # Factor excluded
+        assert 'pH' not in potential  # Factor excluded (buffer pH)
         assert 'ID' not in potential  # Metadata excluded
         assert 'buffer' not in potential  # Categorical excluded
 
