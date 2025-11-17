@@ -581,44 +581,44 @@ class AnalysisTab(ttk.Frame):
                 self.status_var.set(f"Analyzing {len(self.selected_responses)} responses...")
                 self.update()
 
-                # Compare all models for all responses
+                # Compare all models for all responses (this fits all models)
                 self.model_comparison_all = self.analyzer.compare_all_models_all_responses()
 
-                # Store best model selection per response
+                # Select best model and fit for each response
                 self.model_selection_all = {}
                 self.chosen_models = {}
-
-                for response_name in self.selected_responses:
-                    comparison_data = self.model_comparison_all[response_name]
-
-                    if selected_model is None:
-                        # AUTO MODE - select best model for each response
-                        model_sel = self.analyzer.select_best_model(comparison_data)
-                        self.model_selection_all[response_name] = model_sel
-                        self.chosen_models[response_name] = model_sel['recommended_model']
-                    else:
-                        # MANUAL MODE - use same model for all responses
-                        self.model_selection_all[response_name] = {
-                            'recommended_model': selected_model,
-                            'reason': 'User selected'
-                        }
-                        self.chosen_models[response_name] = selected_model
-
-                # Fit chosen models for all responses
                 self.all_results = {}
                 self.all_main_effects = {}
 
                 for response_name in self.selected_responses:
-                    chosen_model = self.chosen_models[response_name]
-                    # Fit model for this specific response
-                    self.all_results[response_name] = self.analyzer.fit_model(
-                        chosen_model,
-                        response_name=response_name
-                    )
-                    self.all_results[response_name]['model_object'] = self.analyzer.model
+                    comparison_data = self.model_comparison_all[response_name]
 
-                # Calculate main effects for all responses
-                self.all_main_effects = self.analyzer.calculate_main_effects_all_responses()
+                    # Determine which model to use for this response
+                    if selected_model is None:
+                        # AUTO MODE - select best model for each response
+                        model_sel = self.analyzer.select_best_model(comparison_data)
+                        chosen = model_sel['recommended_model']
+
+                        if chosen is None:
+                            raise ValueError(f"No models could be fitted for {response_name}. Check your data.")
+
+                        self.model_selection_all[response_name] = model_sel
+                        self.chosen_models[response_name] = chosen
+                    else:
+                        # MANUAL MODE - use same model for all responses
+                        chosen = selected_model
+                        self.model_selection_all[response_name] = {
+                            'recommended_model': chosen,
+                            'reason': 'User selected'
+                        }
+                        self.chosen_models[response_name] = chosen
+
+                    # Re-fit the chosen model for detailed analysis (same as single-response flow)
+                    self.status_var.set(f"Fitting {response_name} with {chosen} model...")
+                    self.update()
+
+                    self.all_results[response_name] = self.analyzer.fit_model(chosen, response_name=response_name)
+                    self.all_main_effects[response_name] = self.analyzer.calculate_main_effects(response_name=response_name)
 
                 # For backward compatibility, use first response as primary
                 self.model_comparison = self.model_comparison_all[self.selected_responses[0]]
