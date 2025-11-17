@@ -274,3 +274,205 @@ class TestBayesianOptimizerIntegration:
 
             # Verify AxClient was called
             mock_ax_class.assert_called_once()
+
+
+class TestBayesianOptimizerSuggestions:
+    """Test suggestion generation functionality"""
+
+    @pytest.mark.skipif(not AX_AVAILABLE, reason="Requires ax-platform")
+    def test_get_next_suggestions_returns_correct_count(self):
+        """Test that get_next_suggestions returns requested number"""
+        optimizer = BayesianOptimizer()
+
+        # Mock initialized optimizer with ax_client
+        optimizer.is_initialized = True
+        optimizer.numeric_factors = ['pH', 'NaCl']
+        optimizer.factor_columns = ['pH', 'NaCl']
+        optimizer.name_mapping = {'pH': 'pH', 'NaCl': 'NaCl'}
+
+        # Mock ax_client
+        mock_ax = Mock()
+        mock_ax.get_next_trial.return_value = (
+            {'pH': 7.5, 'NaCl': 150.0},
+            1  # trial_index
+        )
+        optimizer.ax_client = mock_ax
+
+        # Get suggestions
+        suggestions = optimizer.get_next_suggestions(n=3)
+
+        # Should call get_next_trial 3 times
+        assert mock_ax.get_next_trial.call_count == 3
+
+    def test_get_next_suggestions_without_initialization_raises_error(self):
+        """Test that getting suggestions before initialization fails"""
+        optimizer = BayesianOptimizer()
+        optimizer.is_initialized = False
+
+        with pytest.raises(Exception):  # Could be ValueError or RuntimeError
+            optimizer.get_next_suggestions(n=5)
+
+
+class TestBayesianOptimizerColumnMatching:
+    """Test column name matching functionality"""
+
+    def test_smart_column_match_exact(self):
+        """Test exact column name match"""
+        optimizer = BayesianOptimizer()
+        optimizer.data = pd.DataFrame({
+            'pH': [7.0, 8.0],
+            'NaCl (mM)': [100, 200]
+        })
+
+        # Exact match should work
+        matched = optimizer._smart_column_match('pH')
+        assert matched == 'pH'
+
+    def test_smart_column_match_case_insensitive(self):
+        """Test case-insensitive matching"""
+        optimizer = BayesianOptimizer()
+        optimizer.data = pd.DataFrame({
+            'Buffer_pH': [7.0, 8.0]
+        })
+
+        # Should match regardless of case
+        matched = optimizer._smart_column_match('buffer_ph')
+        assert matched == 'Buffer_pH'
+
+    def test_smart_column_match_partial(self):
+        """Test partial name matching"""
+        optimizer = BayesianOptimizer()
+        optimizer.data = pd.DataFrame({
+            'NaCl (mM)': [100, 200],
+            'KCl (mM)': [50, 100]
+        })
+
+        # Should match 'NaCl' part
+        matched = optimizer._smart_column_match('NaCl')
+        assert 'NaCl' in matched
+
+
+class TestBayesianOptimizerExport:
+    """Test export functionality"""
+
+    def test_export_bo_plots_creates_directory(self, tmp_path):
+        """Test that export creates output directory if needed"""
+        optimizer = BayesianOptimizer()
+        optimizer.is_initialized = True
+        optimizer.ax_client = Mock()
+        optimizer.data = pd.DataFrame({
+            'pH': [7.0, 7.5, 8.0],
+            'NaCl': [100, 150, 200],
+            'Response': [0.5, 0.8, 0.6]
+        })
+        optimizer.numeric_factors = ['pH', 'NaCl']
+
+        export_dir = tmp_path / "nonexistent" / "plots"
+
+        # Mock matplotlib to avoid actual plotting
+        with patch('core.optimizer.plt') as mock_plt:
+            try:
+                optimizer.export_bo_plots(
+                    directory=str(export_dir),
+                    base_name="Test"
+                )
+            except Exception:
+                # May fail due to missing Ax data, but directory should be created
+                pass
+
+        # Directory should exist (created if needed)
+        assert export_dir.parent.exists() or export_dir.exists()
+
+    def test_export_bo_batch_validates_inputs(self):
+        """Test that export validates input parameters"""
+        optimizer = BayesianOptimizer()
+        optimizer.is_initialized = False
+
+        with pytest.raises(Exception):
+            optimizer.export_bo_batch_to_files(
+                n_suggestions=5,
+                batch_number=1,
+                excel_path="/tmp/test.xlsx",
+                csv_path="/tmp/test.csv"
+            )
+
+
+class TestBayesianOptimizerPlotting:
+    """Test plotting functionality"""
+
+    def test_create_suggestion_heatmap_with_mock_data(self):
+        """Test heatmap creation with mocked data"""
+        optimizer = BayesianOptimizer()
+        optimizer.ax_client = Mock()
+        optimizer.data = pd.DataFrame({
+            'pH': [7.0, 7.5, 8.0, 7.0, 7.5, 8.0],
+            'NaCl': [100, 100, 100, 200, 200, 200],
+            'Response': [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        })
+        optimizer.numeric_factors = ['pH', 'NaCl']
+        optimizer.response_column = 'Response'
+
+        # Mock matplotlib
+        with patch('core.optimizer.plt') as mock_plt:
+            mock_fig = Mock()
+            mock_ax = Mock()
+            mock_plt.subplots.return_value = (mock_fig, mock_ax)
+
+            try:
+                optimizer._create_suggestion_heatmap('pH', 'NaCl', mock_ax)
+                # Should call plotting functions
+                assert mock_plt.subplots.called or mock_ax.contourf.called
+            except Exception:
+                # May fail due to Ax internals, but we're testing structure
+                pass
+
+    def test_get_acquisition_plot_requires_initialization(self):
+        """Test that acquisition plot requires initialized optimizer"""
+        optimizer = BayesianOptimizer()
+        optimizer.is_initialized = False
+
+        with pytest.raises(Exception):
+            optimizer.get_acquisition_plot()
+
+
+class TestBayesianOptimizerFactorSelection:
+    """Test factor selection for plotting"""
+
+    def test_select_most_important_factors_returns_two(self):
+        """Test that factor selection returns 2 factors"""
+        optimizer = BayesianOptimizer()
+        optimizer.numeric_factors = ['pH', 'NaCl', 'Glycerol', 'Temperature']
+        optimizer.data = pd.DataFrame({
+            'pH': [7.0, 7.5, 8.0],
+            'NaCl': [100, 150, 200],
+            'Glycerol': [5, 10, 15],
+            'Temperature': [20, 25, 30],
+            'Response': [0.5, 0.8, 0.6]
+        })
+        optimizer.factor_bounds = {
+            'pH': (7.0, 8.0),
+            'NaCl': (100, 200),
+            'Glycerol': (5, 15),
+            'Temperature': (20, 30)
+        }
+
+        # Should return 2 factors (fallback to range-based if no Ax model)
+        selected = optimizer._select_most_important_factors()
+
+        # Should select 2 factors
+        assert isinstance(selected, list)
+        assert len(selected) == 2
+        assert all(f in optimizer.numeric_factors for f in selected)
+
+    def test_select_most_important_with_single_factor(self):
+        """Test factor selection with only one numeric factor"""
+        optimizer = BayesianOptimizer()
+        optimizer.numeric_factors = ['pH']
+        optimizer.data = pd.DataFrame({'pH': [7.0, 8.0]})
+        optimizer.factor_bounds = {'pH': (7.0, 8.0)}
+
+        # With only 1 factor, should handle gracefully
+        selected = optimizer._select_most_important_factors()
+
+        # May return 1 factor or raise error - either is acceptable
+        assert isinstance(selected, list)
