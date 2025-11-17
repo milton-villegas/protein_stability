@@ -1,0 +1,29 @@
+# Simple CI/CD - Just test on one Python version
+# Rename to tests.yml to use this instead of the full version
+
+name: Tests (Simple)
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Run tests
+      run: pytest tests/ -v
+
+    - name: Check coverage
+      run: pytest tests/ --cov=core --cov-report=term
