@@ -1223,15 +1223,16 @@ class AnalysisTab(ttk.Frame):
             self.recommendations_text.insert(tk.END, "Intelligently suggested next experiments (balancing exploration & exploitation):\n\n")
             
             try:
-                # Initialize optimizer with current data
+                # Initialize optimizer with current data (multi-response support)
                 self.optimizer.set_data(
                     data=self.handler.clean_data,
                     factor_columns=self.handler.factor_columns,
                     categorical_factors=self.handler.categorical_factors,
                     numeric_factors=self.handler.numeric_factors,
-                    response_column=self.handler.response_column
+                    response_columns=self.selected_responses,  # Pass all selected responses
+                    response_directions=self.response_directions  # Pass optimization directions
                 )
-                self.optimizer.initialize_optimizer(minimize=False)  # Assume maximize response
+                self.optimizer.initialize_optimizer()  # Uses response_directions internally
                 
                 # Get suggestions
                 suggestions = self.optimizer.get_next_suggestions(n=5)
@@ -1244,8 +1245,39 @@ class AnalysisTab(ttk.Frame):
                         else:
                             self.recommendations_text.insert(tk.END, f"  • {factor:<30}: {value}\n")
                     self.recommendations_text.insert(tk.END, "\n")
-                
-                self.recommendations_text.insert(tk.END, 
+
+                # Add Pareto frontier analysis for multi-objective
+                if self.optimizer.is_multi_objective:
+                    pareto_points = self.optimizer.get_pareto_frontier()
+                    if pareto_points and len(pareto_points) > 0:
+                        self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
+                        self.recommendations_text.insert(tk.END, "PARETO FRONTIER ANALYSIS (Multi-Objective Trade-offs)\n")
+                        self.recommendations_text.insert(tk.END, "="*80 + "\n\n")
+
+                        self.recommendations_text.insert(tk.END,
+                            f"Found {len(pareto_points)} Pareto-optimal solutions (best trade-offs):\n\n")
+
+                        # Show first 5 Pareto points
+                        for i, point in enumerate(pareto_points[:5], 1):
+                            self.recommendations_text.insert(tk.END, f"Pareto Point #{i}:\n")
+                            self.recommendations_text.insert(tk.END, "  Objectives:\n")
+                            for resp, value in point['objectives'].items():
+                                direction = self.response_directions[resp]
+                                arrow = '↑' if direction == 'maximize' else '↓'
+                                self.recommendations_text.insert(tk.END, f"    {arrow} {resp:<25}: {value:.4f}\n")
+                            self.recommendations_text.insert(tk.END, "\n")
+
+                        if len(pareto_points) > 5:
+                            self.recommendations_text.insert(tk.END,
+                                f"  ... and {len(pareto_points) - 5} more Pareto-optimal points\n\n")
+
+                        self.recommendations_text.insert(tk.END,
+                            "💡 TRADE-OFF INSIGHT:\n"
+                            "   No single solution is best for ALL objectives.\n"
+                            "   Choose a Pareto point based on your priorities.\n"
+                            "   View 'Optimization Details' tab for Pareto frontier visualization.\n\n")
+
+                self.recommendations_text.insert(tk.END,
                     "💡 TIP: These suggestions use machine learning to predict where to test next.\n"
                     "   View 'Optimization Details' tab for visualization of predicted response surface.\n"
                 )
@@ -1270,14 +1302,47 @@ class AnalysisTab(ttk.Frame):
             self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
     
     def display_optimization_plot(self):
-        """Display Bayesian Optimization predicted response surface"""
+        """Display Bayesian Optimization predicted response surface or Pareto frontier"""
         if not AX_AVAILABLE or not self.optimizer:
             return
-        
+
         for widget in self.optimization_frame.winfo_children():
             widget.destroy()
-        
+
         try:
+            # Multi-objective: Show Pareto frontier
+            if self.optimizer.is_multi_objective:
+                fig = self.optimizer.plot_pareto_frontier()
+
+                if fig is None:
+                    message_label = ttk.Label(
+                        self.optimization_frame,
+                        text="Pareto frontier plot requires 2-3 objectives.\n"
+                             f"Your selection has {len(self.selected_responses)} responses.",
+                        font=('TkDefaultFont', 12),
+                        justify='center'
+                    )
+                    message_label.pack(expand=True)
+                    return
+
+                canvas = FigureCanvasTkAgg(fig, master=self.optimization_frame)
+                canvas.draw()
+                canvas_widget = canvas.get_tk_widget()
+                canvas_widget.pack(fill='both', expand=True)
+
+                # Bind mousewheel
+                if hasattr(self.optimization_frame, '_bind_mousewheel'):
+                    self.optimization_frame._bind_mousewheel(canvas_widget)
+
+                # Reset scroll position to top
+                if hasattr(self.optimization_frame, '_scroll_canvas'):
+                    self.optimization_frame._scroll_canvas.update_idletasks()
+                    self.optimization_frame._scroll_canvas.yview_moveto(0)
+
+                plt.close(fig)
+                return
+
+            # Single-objective: Show acquisition plot (original behavior)
             # Check if we have enough numeric factors
             num_numeric = len(self.handler.numeric_factors)
             
