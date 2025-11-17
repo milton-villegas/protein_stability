@@ -161,12 +161,13 @@ class DoEAnalyzer:
 
         return formula
 
-    def fit_model(self, model_type: str = 'linear') -> Dict:
+    def fit_model(self, model_type: str = 'linear', response_name: str = None) -> Dict:
         """
         Fit regression model
 
         Args:
             model_type: One of 'linear', 'interactions', 'quadratic', 'purequadratic'
+            response_name: Name of response column (defaults to self.response_column)
 
         Returns:
             Dict with model results
@@ -174,7 +175,7 @@ class DoEAnalyzer:
         if self.data is None:
             raise ValueError("No data set")
 
-        formula = self.build_formula(model_type)
+        formula = self.build_formula(model_type, response_name=response_name)
         self.model = smf.ols(formula=formula, data=self.data).fit()
         self.results = self._extract_results()
         return self.results
