@@ -431,26 +431,41 @@ class BayesianOptimizer:
 
             print(f"ℹ️  Creating comprehensive BO plots for: {factor_x_original} vs {factor_y_original}")
 
-            # Create grid
-            x_min, x_max = self.factor_bounds[factor_x_original]
-            y_min, y_max = self.factor_bounds[factor_y_original]
+            # Create grid - handle categorical factors specially
+            # For pH (ordered categorical), use only tested values, not continuous range
+            is_x_categorical = ('ph' in factor_x_original.lower() and 'buffer' in factor_x_original.lower())
+            is_y_categorical = ('ph' in factor_y_original.lower() and 'buffer' in factor_y_original.lower())
 
-            # Check if bounds are valid (not constant)
-            if x_min == x_max or y_min == y_max:
-                print(f"⚠ Factor has no variation: {factor_x_original}={x_min} or {factor_y_original}={y_min}")
-                return None
+            if is_x_categorical:
+                # Use only tested pH values for X axis
+                x = np.array(sorted(self.data[factor_x_original].unique()))
+            else:
+                # Continuous factor - use linspace
+                x_min, x_max = self.factor_bounds[factor_x_original]
+                if x_min == x_max:
+                    print(f"⚠ Factor has no variation: {factor_x_original}={x_min}")
+                    return None
+                # Add small padding to bounds
+                x_range = x_max - x_min
+                x_min -= 0.05 * x_range
+                x_max += 0.05 * x_range
+                x = np.linspace(x_min, x_max, 15)
 
-            # Add small padding to bounds
-            x_range = x_max - x_min
-            y_range = y_max - y_min
-            x_min -= 0.05 * x_range
-            x_max += 0.05 * x_range
-            y_min -= 0.05 * y_range
-            y_max += 0.05 * y_range
+            if is_y_categorical:
+                # Use only tested pH values for Y axis
+                y = np.array(sorted(self.data[factor_y_original].unique()))
+            else:
+                # Continuous factor - use linspace
+                y_min, y_max = self.factor_bounds[factor_y_original]
+                if y_min == y_max:
+                    print(f"⚠ Factor has no variation: {factor_y_original}={y_min}")
+                    return None
+                # Add small padding to bounds
+                y_range = y_max - y_min
+                y_min -= 0.05 * y_range
+                y_max += 0.05 * y_range
+                y = np.linspace(y_min, y_max, 15)
 
-            # Use coarser grid for faster GUI preview
-            x = np.linspace(x_min, x_max, 15)
-            y = np.linspace(y_min, y_max, 15)
             X, Y = np.meshgrid(x, y)
 
             # Get a template with all other factors at their median values
