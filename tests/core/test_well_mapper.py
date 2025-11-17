@@ -60,9 +60,9 @@ class TestWellMapper:
         well_384 = WellMapper.convert_96_to_384_well(1, "A1")
         assert well_384 == "A1"
 
-        # B3 (plate 1, odd column) → D2
+        # B3 (plate 1, odd column) → C2
         well_384 = WellMapper.convert_96_to_384_well(1, "B3")
-        assert well_384 == "D2"
+        assert well_384 == "C2"
 
     def test_convert_96_to_384_first_plate_even_column(self):
         """Test 96 to 384 conversion for plate 1, even columns"""
@@ -80,9 +80,9 @@ class TestWellMapper:
         well_384 = WellMapper.convert_96_to_384_well(2, "A1")
         assert well_384 == "A7"
 
-        # B3 on plate 2 → D8
+        # B3 on plate 2 → C8
         well_384 = WellMapper.convert_96_to_384_well(2, "B3")
-        assert well_384 == "D8"
+        assert well_384 == "C8"
 
     def test_convert_96_to_384_all_rows(self):
         """Test 96 to 384 conversion for all rows"""

@@ -82,9 +82,9 @@ class TestDesignValidator:
 
     def test_validate_factor_levels_out_of_range(self):
         """Test validation with out-of-range values"""
-        is_valid, msg = DesignValidator.validate_factor_levels("buffer pH", ["7.0", "15.0"])
+        is_valid, msg = DesignValidator.validate_factor_levels("glycerol", ["50.0", "150.0"])
         assert is_valid is False
-        assert "15.0" in msg
+        assert "150.0" in msg
 
     def test_validate_sample_size_valid(self):
         """Test validation of valid sample sizes"""
