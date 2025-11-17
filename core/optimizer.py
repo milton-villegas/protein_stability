@@ -327,21 +327,16 @@ class BayesianOptimizer:
         Returns:
             matplotlib Figure or None
         """
-        print("DEBUG: plot_pareto_frontier() called")
         if not self.is_multi_objective:
-            print("DEBUG: Not multi-objective, returning None")
             return None
 
-        print("DEBUG: Getting Pareto frontier points")
         pareto_points = self.get_pareto_frontier()
-        print(f"DEBUG: Got {len(pareto_points) if pareto_points else 0} Pareto points")
 
         if pareto_points is None or len(pareto_points) == 0:
             print("⚠️  No Pareto frontier points available")
             return None
 
         n_objectives = len(self.response_columns)
-        print(f"DEBUG: n_objectives = {n_objectives}")
 
         if n_objectives == 2:
             # 2D scatter plot
@@ -752,26 +747,16 @@ class BayesianOptimizer:
                 Z_mean = np.zeros_like(X)
                 Z_sem = np.zeros_like(X)
 
-                # DEBUG: Check structure of first prediction
-                if len(predictions_list) > 0:
-                    first_pred = predictions_list[0]
-                    print(f"DEBUG: Prediction structure type: {type(first_pred)}")
-                    print(f"DEBUG: First prediction: {first_pred}")
-                    if isinstance(first_pred, tuple):
-                        print(f"DEBUG: Tuple length: {len(first_pred)}")
-                        for i, item in enumerate(first_pred):
-                            print(f"DEBUG: Tuple[{i}] type: {type(item)}, value: {item}")
-
                 idx = 0
                 for i in range(X.shape[0]):
                     for j in range(X.shape[1]):
                         pred = predictions_list[idx]
 
-                        # Ax returns (mean_dict, cov_dict)
-                        if isinstance(pred, tuple) and len(pred) == 2:
-                            mean_dict, cov_dict = pred
-                            pred_mean = mean_dict[self.response_column]
-                            variance = cov_dict[self.response_column][self.response_column]
+                        # Ax returns dict format: {response_name: (mean, variance)}
+                        if isinstance(pred, dict):
+                            mean_variance_tuple = pred[self.response_column]
+                            pred_mean = mean_variance_tuple[0]
+                            variance = mean_variance_tuple[1]
                             pred_sem = np.sqrt(variance)
                         else:
                             raise ValueError(f"Unexpected format: {type(pred)}")

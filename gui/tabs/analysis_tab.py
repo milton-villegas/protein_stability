@@ -1270,18 +1270,8 @@ class AnalysisTab(ttk.Frame):
     
     def display_optimization_plot(self):
         """Display Bayesian Optimization predicted response surface or Pareto frontier"""
-        print("DEBUG: display_optimization_plot() called")
-
-        if not AX_AVAILABLE:
-            print("DEBUG: AX_AVAILABLE is False")
+        if not AX_AVAILABLE or not self.optimizer:
             return
-
-        if not self.optimizer:
-            print("DEBUG: self.optimizer is None")
-            return
-
-        print(f"DEBUG: is_multi_objective = {self.optimizer.is_multi_objective}")
-        print(f"DEBUG: response_columns = {self.optimizer.response_columns}")
 
         for widget in self.optimization_frame.winfo_children():
             widget.destroy()
@@ -1289,12 +1279,9 @@ class AnalysisTab(ttk.Frame):
         try:
             # Multi-objective: Show Pareto frontier
             if self.optimizer.is_multi_objective:
-                print("DEBUG: Calling plot_pareto_frontier()")
                 fig = self.optimizer.plot_pareto_frontier()
-                print(f"DEBUG: plot_pareto_frontier() returned fig: {fig is not None}")
 
                 if fig is None:
-                    print("DEBUG: fig is None, showing message")
                     message_label = ttk.Label(
                         self.optimization_frame,
                         text="Pareto frontier plot requires 2-3 objectives.\n"
@@ -1305,12 +1292,10 @@ class AnalysisTab(ttk.Frame):
                     message_label.pack(expand=True)
                     return
 
-                print("DEBUG: Creating canvas for Pareto frontier")
                 canvas = FigureCanvasTkAgg(fig, master=self.optimization_frame)
                 canvas.draw()
                 canvas_widget = canvas.get_tk_widget()
                 canvas_widget.pack(fill='both', expand=True)
-                print("DEBUG: Canvas packed successfully")
 
                 # Bind mousewheel
                 if hasattr(self.optimization_frame, '_bind_mousewheel'):
@@ -1325,14 +1310,11 @@ class AnalysisTab(ttk.Frame):
                 return
 
             # Single-objective: Show acquisition plot (original behavior)
-            print("DEBUG: Single-objective path")
             # Check if we have enough numeric factors
             num_numeric = len(self.handler.numeric_factors)
-            print(f"DEBUG: num_numeric = {num_numeric}")
 
             if num_numeric < 2:
                 # Show message if plot can't be generated
-                print("DEBUG: Not enough numeric factors, showing message")
                 message_label = ttk.Label(
                     self.optimization_frame,
                     text=f"Optimization plot requires at least 2 numeric factors.\n"
@@ -1344,13 +1326,10 @@ class AnalysisTab(ttk.Frame):
                 message_label.pack(expand=True)
                 return
 
-            print("DEBUG: Calling get_acquisition_plot()")
             fig = self.optimizer.get_acquisition_plot()
-            print(f"DEBUG: get_acquisition_plot() returned fig: {fig is not None}")
 
             if fig is None:
                 # Show message if plot generation failed
-                print("DEBUG: fig is None, showing message")
                 message_label = ttk.Label(
                     self.optimization_frame,
                     text="Could not generate optimization plot.\n"
@@ -1361,12 +1340,10 @@ class AnalysisTab(ttk.Frame):
                 message_label.pack(expand=True)
                 return
 
-            print("DEBUG: Creating canvas for acquisition plot")
             canvas = FigureCanvasTkAgg(fig, master=self.optimization_frame)
             canvas.draw()
             canvas_widget = canvas.get_tk_widget()
             canvas_widget.pack(fill='both', expand=True)
-            print("DEBUG: Canvas packed successfully")
             
             # Bind mousewheel to the matplotlib canvas widget
             if hasattr(self.optimization_frame, '_bind_mousewheel'):
@@ -1378,12 +1355,8 @@ class AnalysisTab(ttk.Frame):
                 self.optimization_frame._scroll_canvas.yview_moveto(0)
             
             plt.close(fig)
-            
-        except Exception as e:
-            print(f"DEBUG: Exception in display_optimization_plot: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
 
+        except Exception as e:
             error_label = ttk.Label(
                 self.optimization_frame,
                 text=f"Could not generate optimization plot:\n{str(e)}\n\n"
