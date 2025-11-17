@@ -476,6 +476,8 @@ class AnalysisTab(ttk.Frame):
         self.selected_responses = []
         self.response_directions = {}
 
+        print(f"DEBUG: Potential responses found: {potential_responses}")
+
         # Header
         header_label = ttk.Label(self.response_frame,
                                 text="Select response variable(s) to optimize:",
@@ -490,6 +492,7 @@ class AnalysisTab(ttk.Frame):
             # Auto-select if column name contains "response" (case-insensitive)
             if 'response' in col_name.lower():
                 var.set(True)
+                print(f"DEBUG: Auto-selecting '{col_name}' (contains 'response')")
 
             checkbox = ttk.Checkbutton(self.response_frame, text=col_name, variable=var,
                                       command=self._update_selected_responses)
@@ -544,11 +547,16 @@ class AnalysisTab(ttk.Frame):
             messagebox.showwarning("Warning", "Please select at least one response variable.")
             return
 
+        # Debug: print selected responses
+        print(f"DEBUG: Selected responses: {self.selected_responses}")
+        print(f"DEBUG: Response directions: {self.response_directions}")
+
         self.status_var.set("Analyzing...")
         self.update()
 
         try:
             # Detect which columns are factors vs response
+            print(f"DEBUG: Calling detect_columns with: {self.selected_responses}")
             self.handler.detect_columns(response_columns=self.selected_responses)
             clean_data = self.handler.preprocess_data()
 
