@@ -246,10 +246,30 @@ class TestDataHandlerMultiResponse:
 
         # Should include response columns, exclude factors, metadata, and categorical
         assert 'Response' in potential
-        assert 'NaCl' not in potential  # Factor excluded
-        assert 'pH' not in potential  # Factor excluded (buffer pH)
+        # NaCl and pH excluded because they match known factors AND have repeating values
+        assert 'NaCl' not in potential
+        assert 'pH' not in potential
         assert 'ID' not in potential  # Metadata excluded
         assert 'buffer' not in potential  # Categorical excluded
+
+    def test_get_potential_response_columns_custom_factor(self, tmp_path):
+        """Test that custom factors are detected by value patterns"""
+        # Create data with custom factor (not in AVAILABLE_FACTORS)
+        data = pd.DataFrame({
+            'CustomFactor': [10, 20, 10, 20, 10, 20],  # Repeating pattern (factor)
+            'MeasuredResponse': [1.1, 2.3, 1.2, 2.4, 1.0, 2.5]  # Unique values (response)
+        })
+        filepath = tmp_path / "custom_factor.xlsx"
+        data.to_excel(filepath, index=False)
+
+        handler = DataHandler()
+        handler.load_excel(str(filepath))
+        potential = handler.get_potential_response_columns()
+
+        # CustomFactor should be excluded (detected by repeating values)
+        # MeasuredResponse should be included
+        assert 'CustomFactor' not in potential
+        assert 'MeasuredResponse' in potential
 
     def test_detect_columns_with_response_columns_list(self, temp_excel_file):
         """Test detect_columns with response_columns parameter"""

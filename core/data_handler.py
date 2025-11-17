@@ -63,31 +63,50 @@ class DataHandler:
         return self.stock_concentrations.copy()
 
     def get_potential_response_columns(self):
-        """Get list of numeric columns that could be responses (excluding metadata and factors)"""
+        """Get list of numeric columns that could be responses (excluding metadata and detected factors)
+
+        Uses heuristics to distinguish factors from responses:
+        - Factors typically have repeating values (designed combinations)
+        - Responses typically have more unique values (measured outcomes)
+        - Factors appear in known factor list (smart default)
+        """
         if self.data is None:
             return []
 
-        # Build list of factor names to exclude (both internal and display names)
-        factor_names_to_exclude = set()
-        for internal_name, display_name in AVAILABLE_FACTORS.items():
-            factor_names_to_exclude.add(internal_name.lower())
-            factor_names_to_exclude.add(display_name.lower())
-            # Also add without units in parentheses
-            if '(' in display_name:
-                base_name = display_name.split('(')[0].strip().lower()
-                factor_names_to_exclude.add(base_name)
-
-        potential_responses = []
+        # Get all numeric columns first
+        all_numeric = []
         for col in self.data.columns:
-            if col not in METADATA_COLUMNS:
-                # Check if column is numeric
-                if pd.api.types.is_numeric_dtype(self.data[col]):
-                    # Exclude if it matches a known factor name
-                    col_lower = col.lower()
-                    col_base = col.split('(')[0].strip().lower() if '(' in col else col_lower
+            if col not in METADATA_COLUMNS and pd.api.types.is_numeric_dtype(self.data[col]):
+                all_numeric.append(col)
 
-                    if col_lower not in factor_names_to_exclude and col_base not in factor_names_to_exclude:
-                        potential_responses.append(col)
+        if not all_numeric:
+            return []
+
+        # Identify likely factors using multiple heuristics
+        likely_factors = set()
+
+        # Heuristic 1: Check against known factor names (smart default)
+        for col in all_numeric:
+            col_lower = col.lower()
+            col_base = col.split('(')[0].strip().lower() if '(' in col else col_lower
+
+            for internal_name, display_name in AVAILABLE_FACTORS.items():
+                if (col_lower == internal_name.lower() or
+                    col_lower == display_name.lower() or
+                    col_base == display_name.split('(')[0].strip().lower()):
+                    likely_factors.add(col)
+                    break
+
+        # Heuristic 2: Check value patterns (factors have more repeating values)
+        for col in all_numeric:
+            if col not in likely_factors:
+                unique_ratio = len(self.data[col].unique()) / len(self.data[col])
+                # If less than 50% unique values, likely a factor (designed combinations repeat)
+                if unique_ratio < 0.5:
+                    likely_factors.add(col)
+
+        # Return numeric columns that are NOT likely factors
+        potential_responses = [col for col in all_numeric if col not in likely_factors]
 
         return potential_responses
 
