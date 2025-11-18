@@ -211,7 +211,7 @@ class BayesianOptimizer:
                         min_val = constraint['min']
                         print(f"    Creating OutcomeConstraint: {response} >= {min_val}")
                         oc = OutcomeConstraint(
-                            metric_name=response,
+                            metric=response,
                             op=ComparisonOp.GEQ,
                             bound=min_val,
                             relative=False
@@ -222,7 +222,7 @@ class BayesianOptimizer:
                         max_val = constraint['max']
                         print(f"    Creating OutcomeConstraint: {response} <= {max_val}")
                         oc = OutcomeConstraint(
-                            metric_name=response,
+                            metric=response,
                             op=ComparisonOp.LEQ,
                             bound=max_val,
                             relative=False
