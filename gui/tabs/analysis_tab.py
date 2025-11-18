@@ -162,11 +162,11 @@ class AnalysisTab(ttk.Frame):
         export_frame = ttk.LabelFrame(results_tab, text="Export Results", padding=10)
         export_frame.pack(fill='x', padx=10, pady=5)
 
-        self.export_stats_btn = ttk.Button(export_frame, text="Export Statistics (.xlxs)",
+        self.export_stats_btn = ttk.Button(export_frame, text="Export Statistics",
                                           command=self.export_statistics, state='disabled')
         self.export_stats_btn.pack(side='left', padx=5)
 
-        self.export_plots_btn = ttk.Button(export_frame, text="Export Plots (.png)",
+        self.export_plots_btn = ttk.Button(export_frame, text="Export Plots",
                                           command=self.export_plots, state='disabled')
         self.export_plots_btn.pack(side='left', padx=5)
 
