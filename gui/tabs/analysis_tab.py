@@ -1318,15 +1318,33 @@ class AnalysisTab(ttk.Frame):
                         self.recommendations_text.insert(tk.END, "="*80 + "\n\n")
 
                         self.recommendations_text.insert(tk.END,
-                            f"Found {len(pareto_points)} Pareto-optimal solutions (best trade-offs):\n\n")
+                            f"Found {len(pareto_points)} Pareto-optimal experiments (best trade-offs):\n")
+                        self.recommendations_text.insert(tk.END,
+                            "These are experiments you already ran that represent optimal trade-offs.\n\n")
 
                         # Show first 5 Pareto points
                         for i, point in enumerate(pareto_points[:5], 1):
                             violations = self.optimizer.check_constraint_violations(point['objectives'])
 
                             status = "✓" if not violations else "⚠️"
-                            self.recommendations_text.insert(tk.END, f"Pareto Point #{i}: {status}\n")
-                            self.recommendations_text.insert(tk.END, "  Objectives:\n")
+
+                            # Display header with ID
+                            header = f"Pareto Point #{i}: {status}"
+                            if point.get('id') is not None:
+                                header += f" (ID: {point['id']})"
+                            self.recommendations_text.insert(tk.END, header + "\n")
+
+                            # Display experimental conditions
+                            if point.get('parameters'):
+                                self.recommendations_text.insert(tk.END, "  Experimental Conditions:\n")
+                                for param_name, param_value in point['parameters'].items():
+                                    if isinstance(param_value, float):
+                                        self.recommendations_text.insert(tk.END, f"    • {param_name}: {param_value:.2f}\n")
+                                    else:
+                                        self.recommendations_text.insert(tk.END, f"    • {param_name}: {param_value}\n")
+
+                            # Display objectives
+                            self.recommendations_text.insert(tk.END, "  Results:\n")
                             for resp, value in point['objectives'].items():
                                 direction = self.response_directions[resp]
                                 arrow = '↑' if direction == 'maximize' else '↓'

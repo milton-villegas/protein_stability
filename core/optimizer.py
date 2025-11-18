@@ -325,7 +325,7 @@ class BayesianOptimizer:
         """Get Pareto frontier for multi-objective optimization
 
         Returns:
-            List of dicts with 'parameters' and 'objectives' for Pareto-optimal points
+            List of dicts with 'parameters', 'objectives', 'id', and 'row_index' for Pareto-optimal points
         """
         if not self.is_initialized:
             raise ValueError("Optimizer not initialized")
@@ -349,9 +349,36 @@ class BayesianOptimizer:
                 # Extract mean values from tuple: values = (mean_dict, cov_dict)
                 mean_dict = values[0] if isinstance(values, tuple) else values
 
+                # Match parameters to original data row to get ID
+                row_match = None
+                row_index = None
+                exp_id = None
+
+                for idx, row in self.data.iterrows():
+                    match = True
+                    for param_name, param_value in original_params.items():
+                        if param_name in row.index:
+                            if isinstance(param_value, float):
+                                if not np.isclose(row[param_name], param_value, rtol=1e-5):
+                                    match = False
+                                    break
+                            else:
+                                if row[param_name] != param_value:
+                                    match = False
+                                    break
+
+                    if match:
+                        row_match = row
+                        row_index = idx
+                        if 'ID' in row.index:
+                            exp_id = row['ID']
+                        break
+
                 pareto_points.append({
                     'parameters': original_params,
-                    'objectives': mean_dict  # Dict of {response_name: mean_value}
+                    'objectives': mean_dict,  # Dict of {response_name: mean_value}
+                    'id': exp_id,
+                    'row_index': row_index
                 })
 
             return pareto_points
