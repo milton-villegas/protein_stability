@@ -1258,8 +1258,7 @@ class AnalysisTab(ttk.Frame):
             self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
             self.recommendations_text.insert(tk.END, "BAYESIAN OPTIMIZATION SUGGESTIONS\n")
             self.recommendations_text.insert(tk.END, "="*80 + "\n")
-            self.recommendations_text.insert(tk.END, "Intelligently suggested next experiments (balancing exploration & exploitation):\n\n")
-            
+
             try:
                 # Initialize optimizer with current data (multi-response support)
                 exploration_mode = self.exploration_mode_var.get() if hasattr(self, 'exploration_mode_var') else False
@@ -1275,7 +1274,29 @@ class AnalysisTab(ttk.Frame):
                     exploration_mode=exploration_mode
                 )
                 self.optimizer.initialize_optimizer()
-                
+
+                # Show constraint information
+                if self.response_constraints:
+                    self.recommendations_text.insert(tk.END, "\nActive Constraints:\n")
+                    for response, constraint in self.response_constraints.items():
+                        parts = []
+                        if 'min' in constraint:
+                            parts.append(f"{constraint['min']} ≤ {response}")
+                        if 'max' in constraint:
+                            parts.append(f"{response} ≤ {constraint['max']}")
+                        if parts:
+                            self.recommendations_text.insert(tk.END, f"  • {' and '.join(parts)}\n")
+
+                    if exploration_mode:
+                        self.recommendations_text.insert(tk.END, "\n⚠️  Exploration Mode: ON\n")
+                        self.recommendations_text.insert(tk.END, "   Some suggestions may violate constraints to discover unexpected solutions.\n\n")
+                    else:
+                        self.recommendations_text.insert(tk.END, "\n✓ All suggestions will respect these constraints.\n\n")
+                else:
+                    self.recommendations_text.insert(tk.END, "\nNo constraints applied.\n\n")
+
+                self.recommendations_text.insert(tk.END, "\nIntelligently suggested next experiments (balancing exploration & exploitation):\n\n")
+
                 # Get suggestions
                 suggestions = self.optimizer.get_next_suggestions(n=5)
                 
@@ -1301,12 +1322,21 @@ class AnalysisTab(ttk.Frame):
 
                         # Show first 5 Pareto points
                         for i, point in enumerate(pareto_points[:5], 1):
-                            self.recommendations_text.insert(tk.END, f"Pareto Point #{i}:\n")
+                            violations = self.optimizer.check_constraint_violations(point['objectives'])
+
+                            status = "✓" if not violations else "⚠️"
+                            self.recommendations_text.insert(tk.END, f"Pareto Point #{i}: {status}\n")
                             self.recommendations_text.insert(tk.END, "  Objectives:\n")
                             for resp, value in point['objectives'].items():
                                 direction = self.response_directions[resp]
                                 arrow = '↑' if direction == 'maximize' else '↓'
                                 self.recommendations_text.insert(tk.END, f"    {arrow} {resp:<25}: {value:.4f}\n")
+
+                            if violations:
+                                self.recommendations_text.insert(tk.END, "  ⚠️  Constraint Violations:\n")
+                                for violation in violations:
+                                    self.recommendations_text.insert(tk.END, f"    • {violation}\n")
+
                             self.recommendations_text.insert(tk.END, "\n")
 
                         if len(pareto_points) > 5:
