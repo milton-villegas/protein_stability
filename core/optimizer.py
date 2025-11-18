@@ -785,9 +785,9 @@ class BayesianOptimizer:
             xy = np.vstack([suggestions_x, suggestions_y])
             z = gaussian_kde(xy)(xy)
 
-            # Plot scatter with density colors - modern colormap
+            # Plot scatter with density colors - colorblind-safe colormap
             scatter = ax.scatter(suggestions_x, suggestions_y, c=z, s=150,
-                               cmap='plasma', alpha=0.7,
+                               cmap='viridis', alpha=0.7,
                                edgecolors='white', linewidth=2)
 
             # Enhanced colorbar
@@ -1156,20 +1156,29 @@ class BayesianOptimizer:
             # PANEL 2: Acquisition Function (Top-Right)
             ax2 = fig.add_subplot(gs[0, 1])
             # Calculate Expected Improvement (EI) - Proper formula
-            current_best = self.data[self.response_column].max()  # Assuming maximize
+            # Get current best based on optimization direction
+            direction = self.response_directions.get(self.response_column, 'maximize')
+            if direction == 'maximize':
+                current_best = self.data[self.response_column].max()
+            else:  # minimize
+                current_best = self.data[self.response_column].min()
 
             # Avoid division by zero
             Z_sem_safe = np.where(Z_sem > 1e-6, Z_sem, 1e-6)
 
-            # Standardized improvement
-            Z_score = (Z_mean - current_best) / Z_sem_safe
+            # Standardized improvement (for minimize, we negate to find improvement)
+            if direction == 'maximize':
+                Z_score = (Z_mean - current_best) / Z_sem_safe
+                # Proper EI formula: EI = (mu - best) * Phi(Z) + sigma * phi(Z)
+                Z_ei = (Z_mean - current_best) * scipy_stats.norm.cdf(Z_score) + Z_sem_safe * scipy_stats.norm.pdf(Z_score)
+            else:  # minimize
+                Z_score = (current_best - Z_mean) / Z_sem_safe
+                # For minimize: improvement when prediction is lower than current best
+                Z_ei = (current_best - Z_mean) * scipy_stats.norm.cdf(Z_score) + Z_sem_safe * scipy_stats.norm.pdf(Z_score)
 
-            # Proper EI formula: EI = (mu - best) * Phi(Z) + sigma * phi(Z)
-            # where Phi is CDF and phi is PDF of standard normal
-            Z_ei = (Z_mean - current_best) * scipy_stats.norm.cdf(Z_score) + Z_sem_safe * scipy_stats.norm.pdf(Z_score)
             Z_ei = np.maximum(Z_ei, 0)  # EI is always non-negative
 
-            contour2 = ax2.contourf(X, Y, Z_ei, levels=15, cmap='plasma', alpha=0.9)
+            contour2 = ax2.contourf(X, Y, Z_ei, levels=15, cmap='viridis', alpha=0.9)
             cbar2 = plt.colorbar(contour2, ax=ax2)
             cbar2.ax.tick_params(labelsize=8)
             cbar2.set_label('EI Score', fontsize=9, fontweight='bold')
@@ -1177,8 +1186,11 @@ class BayesianOptimizer:
             ax2.scatter(existing_x, existing_y, c='#2E86AB', s=80,
                        edgecolors='white', linewidth=2, label='Tested', zorder=5, alpha=0.9)
 
-            # Mark best point so far
-            best_idx = self.data[self.response_column].idxmax()
+            # Mark best point so far (based on direction)
+            if direction == 'maximize':
+                best_idx = self.data[self.response_column].idxmax()
+            else:  # minimize
+                best_idx = self.data[self.response_column].idxmin()
             best_x = self.data.loc[best_idx, factor_x_original]
             best_y = self.data.loc[best_idx, factor_y_original]
             ax2.scatter([best_x], [best_y], c='gold', s=200, marker='*',
@@ -1235,9 +1247,12 @@ class BayesianOptimizer:
             # PANEL 4: Optimization Progress (Bottom-Right)
             ax4 = fig.add_subplot(gs[1, 1])
 
-            # Get cumulative best values
+            # Get cumulative best values based on optimization direction
             response_values = self.data[self.response_column].values
-            cumulative_best = np.maximum.accumulate(response_values)  # Assuming maximize
+            if direction == 'maximize':
+                cumulative_best = np.maximum.accumulate(response_values)
+            else:  # minimize
+                cumulative_best = np.minimum.accumulate(response_values)
             iterations = np.arange(1, len(cumulative_best) + 1)
 
             # Plot progress
@@ -1397,20 +1412,37 @@ class BayesianOptimizer:
 
             # EXPORT 2: Acquisition Function
             fig2, ax2 = plt.subplots(1, 1, figsize=(9, 7))
-            current_best = self.data[self.response_column].max()
+
+            # Get current best based on optimization direction
+            direction = self.response_directions.get(self.response_column, 'maximize')
+            if direction == 'maximize':
+                current_best = self.data[self.response_column].max()
+            else:  # minimize
+                current_best = self.data[self.response_column].min()
 
             # Proper EI formula
             Z_sem_safe = np.where(Z_sem > 1e-6, Z_sem, 1e-6)
-            Z_score = (Z_mean - current_best) / Z_sem_safe
-            Z_ei = (Z_mean - current_best) * scipy_stats.norm.cdf(Z_score) + Z_sem_safe * scipy_stats.norm.pdf(Z_score)
+
+            if direction == 'maximize':
+                Z_score = (Z_mean - current_best) / Z_sem_safe
+                Z_ei = (Z_mean - current_best) * scipy_stats.norm.cdf(Z_score) + Z_sem_safe * scipy_stats.norm.pdf(Z_score)
+            else:  # minimize
+                Z_score = (current_best - Z_mean) / Z_sem_safe
+                Z_ei = (current_best - Z_mean) * scipy_stats.norm.cdf(Z_score) + Z_sem_safe * scipy_stats.norm.pdf(Z_score)
+
             Z_ei = np.maximum(Z_ei, 0)
-            contour2 = ax2.contourf(X, Y, Z_ei, levels=20, cmap='plasma', alpha=0.9)
+            contour2 = ax2.contourf(X, Y, Z_ei, levels=20, cmap='viridis', alpha=0.9)
             cbar2 = plt.colorbar(contour2, ax=ax2)
             cbar2.ax.tick_params(labelsize=11)
             cbar2.set_label('Expected Improvement Score', fontsize=12, fontweight='bold')
             ax2.scatter(existing_x, existing_y, c='#2E86AB', s=150,
                        edgecolors='white', linewidth=3, label='Tested', zorder=5, alpha=0.9)
-            best_idx = self.data[self.response_column].idxmax()
+
+            # Mark best point based on direction
+            if direction == 'maximize':
+                best_idx = self.data[self.response_column].idxmax()
+            else:  # minimize
+                best_idx = self.data[self.response_column].idxmin()
             best_x = self.data.loc[best_idx, factor_x_original]
             best_y = self.data.loc[best_idx, factor_y_original]
             ax2.scatter([best_x], [best_y], c='gold', s=300, marker='*',
@@ -1478,7 +1510,15 @@ class BayesianOptimizer:
             # EXPORT 4: Progress
             fig4, ax4 = plt.subplots(1, 1, figsize=(9, 7))
             response_values = self.data[self.response_column].values
-            cumulative_best = np.maximum.accumulate(response_values)
+
+            # Get cumulative best based on direction
+            if direction == 'maximize':
+                cumulative_best = np.maximum.accumulate(response_values)
+                total_improvement = cumulative_best[-1] - cumulative_best[0]
+            else:  # minimize
+                cumulative_best = np.minimum.accumulate(response_values)
+                total_improvement = cumulative_best[0] - cumulative_best[-1]  # Positive for improvement
+
             iterations = np.arange(1, len(cumulative_best) + 1)
             ax4.plot(iterations, cumulative_best, 'o-', color='#029E73', linewidth=3,
                     markersize=8, markerfacecolor='#029E73', markeredgecolor='white',
@@ -1492,8 +1532,6 @@ class BayesianOptimizer:
             y_max = cumulative_best.max()
             y_range = y_max - y_min
             ax4.set_ylim(y_min - 0.1 * y_range, y_max + 0.05 * y_range)
-
-            total_improvement = cumulative_best[-1] - cumulative_best[0]
             ax4.text(0.05, 0.95, f'Total Improvement: {total_improvement:+.2f}\\nIterations: {len(iterations)}',
                     transform=ax4.transAxes, fontsize=11, fontweight='bold',
                     verticalalignment='top', bbox=dict(boxstyle='round',
