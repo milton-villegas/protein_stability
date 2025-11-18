@@ -430,11 +430,30 @@ class BayesianOptimizer:
             ax.scatter(all_r1, all_r2, c='lightgray', s=100, alpha=0.5,
                       label='Observed', zorder=1, edgecolors='gray', linewidths=0.5)
 
-            # Plot Pareto frontier points
-            pareto_r1 = [p['objectives'][resp1] for p in pareto_points]
-            pareto_r2 = [p['objectives'][resp2] for p in pareto_points]
-            ax.scatter(pareto_r1, pareto_r2, c=self.COLORS['primary'], s=200,
-                      label='Pareto Frontier', zorder=2, marker='*', edgecolors='black', linewidths=1.5)
+            # Separate Pareto points by constraint violations
+            valid_r1, valid_r2 = [], []
+            violated_r1, violated_r2 = [], []
+
+            for p in pareto_points:
+                violations = self.check_constraint_violations(p['objectives'])
+                if violations:
+                    violated_r1.append(p['objectives'][resp1])
+                    violated_r2.append(p['objectives'][resp2])
+                else:
+                    valid_r1.append(p['objectives'][resp1])
+                    valid_r2.append(p['objectives'][resp2])
+
+            # Plot valid Pareto points (meets constraints)
+            if valid_r1:
+                ax.scatter(valid_r1, valid_r2, c=self.COLORS['primary'], s=200,
+                          label='Pareto Frontier (meets constraints)', zorder=2, marker='*',
+                          edgecolors='black', linewidths=1.5)
+
+            # Plot violated Pareto points (violates constraints)
+            if violated_r1:
+                ax.scatter(violated_r1, violated_r2, c=self.COLORS['warning'], s=200,
+                          label='Pareto Frontier (violates constraints)', zorder=2, marker='*',
+                          edgecolors='darkred', linewidths=1.5)
 
             # Add arrows showing optimization direction
             dir1 = self.response_directions[resp1]
@@ -467,12 +486,32 @@ class BayesianOptimizer:
             ax.scatter(all_r1, all_r2, all_r3, c='lightgray', s=80, alpha=0.4,
                       label='Observed', edgecolors='gray', linewidths=0.5)
 
-            # Plot Pareto frontier points
-            pareto_r1 = [p['objectives'][resp1] for p in pareto_points]
-            pareto_r2 = [p['objectives'][resp2] for p in pareto_points]
-            pareto_r3 = [p['objectives'][resp3] for p in pareto_points]
-            ax.scatter(pareto_r1, pareto_r2, pareto_r3, c=self.COLORS['primary'], s=250,
-                      label='Pareto Frontier', marker='*', edgecolors='black', linewidths=1.5)
+            # Separate Pareto points by constraint violations
+            valid_r1, valid_r2, valid_r3 = [], [], []
+            violated_r1, violated_r2, violated_r3 = [], [], []
+
+            for p in pareto_points:
+                violations = self.check_constraint_violations(p['objectives'])
+                if violations:
+                    violated_r1.append(p['objectives'][resp1])
+                    violated_r2.append(p['objectives'][resp2])
+                    violated_r3.append(p['objectives'][resp3])
+                else:
+                    valid_r1.append(p['objectives'][resp1])
+                    valid_r2.append(p['objectives'][resp2])
+                    valid_r3.append(p['objectives'][resp3])
+
+            # Plot valid Pareto points (meets constraints)
+            if valid_r1:
+                ax.scatter(valid_r1, valid_r2, valid_r3, c=self.COLORS['primary'], s=250,
+                          label='Pareto (meets constraints)', marker='*',
+                          edgecolors='black', linewidths=1.5)
+
+            # Plot violated Pareto points (violates constraints)
+            if violated_r1:
+                ax.scatter(violated_r1, violated_r2, violated_r3, c=self.COLORS['warning'], s=250,
+                          label='Pareto (violates constraints)', marker='*',
+                          edgecolors='darkred', linewidths=1.5)
 
             # Labels
             dir1 = self.response_directions[resp1]
