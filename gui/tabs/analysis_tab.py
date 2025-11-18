@@ -1279,9 +1279,7 @@ class AnalysisTab(ttk.Frame):
         try:
             # Multi-objective: Show Pareto frontier
             if self.optimizer.is_multi_objective:
-                print(f"DEBUG: Calling plot_pareto_frontier() for {len(self.optimizer.response_columns)} objectives")
                 fig = self.optimizer.plot_pareto_frontier()
-                print(f"DEBUG: plot_pareto_frontier() returned fig={fig is not None}")
 
                 if fig is None:
                     message_label = ttk.Label(
