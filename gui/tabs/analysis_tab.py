@@ -1176,15 +1176,27 @@ class AnalysisTab(ttk.Frame):
         clean_data = self.handler.clean_data
         max_idx = clean_data[self.handler.response_column].idxmax()
         optimal_response = clean_data.loc[max_idx, self.handler.response_column]
-        
+
         self.recommendations_text.insert(tk.END, "="*80 + "\n")
-        self.recommendations_text.insert(tk.END, "BEST OBSERVED CONDITION (from your data)\n")
+        self.recommendations_text.insert(tk.END, "BEST OBSERVED EXPERIMENT\n")
         self.recommendations_text.insert(tk.END, "-"*80 + "\n")
-        self.recommendations_text.insert(tk.END, f"Response Value: {optimal_response:.2f}\n\n")
-        
+
+        # Show ID if available
+        header = "This is the best experiment you already ran."
+        if 'ID' in clean_data.columns:
+            exp_id = clean_data.loc[max_idx, 'ID']
+            header = f"Best Experiment: ID {exp_id}"
+        self.recommendations_text.insert(tk.END, header + "\n\n")
+
+        self.recommendations_text.insert(tk.END, "Experimental Conditions:\n")
         for factor in self.handler.factor_columns:
             value = clean_data.loc[max_idx, factor]
-            self.recommendations_text.insert(tk.END, f"  • {factor:<30}: {value}\n")
+            if isinstance(value, float):
+                self.recommendations_text.insert(tk.END, f"  • {factor:<30}: {value:.2f}\n")
+            else:
+                self.recommendations_text.insert(tk.END, f"  • {factor:<30}: {value}\n")
+
+        self.recommendations_text.insert(tk.END, f"\nResult:\n  • {self.handler.response_column:<30}: {optimal_response:.2f}\n")
         
         # Predicted optimal based on model
         self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
