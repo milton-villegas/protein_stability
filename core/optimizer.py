@@ -746,49 +746,29 @@ class BayesianOptimizer:
                 )
 
                 # Extract predictions and uncertainty into arrays
-                Z_mean = np.zeros_like(X)
-                Z_sem = np.zeros_like(X)
+                # IMPORTANT: Use dtype=float to prevent truncation when X is integer (categorical factors)
+                Z_mean = np.zeros_like(X, dtype=float)
+                Z_sem = np.zeros_like(X, dtype=float)
 
                 idx = 0
-                non_zero_count = 0
                 for i in range(X.shape[0]):
                     for j in range(X.shape[1]):
                         pred = predictions_list[idx]
 
                         # Ax returns dict format: {response_name: (mean, variance)}
                         if isinstance(pred, dict):
-                            if idx == 0:  # Debug first prediction
-                                print(f"DEBUG: First prediction dict keys: {list(pred.keys())}")
-                                print(f"DEBUG: self.response_column = '{self.response_column}'")
-                                print(f"DEBUG: First prediction full: {pred}")
-
                             mean_variance_tuple = pred[self.response_column]
                             pred_mean = mean_variance_tuple[0]
                             variance = mean_variance_tuple[1]
                             pred_sem = np.sqrt(variance)
-
-                            if idx == 0:  # Debug first values
-                                print(f"DEBUG: mean={pred_mean}, variance={variance}, sem={pred_sem}")
-                                print(f"DEBUG: Setting Z_sem[{i}, {j}] = {pred_sem}")
-
-                            if pred_sem > 0:
-                                non_zero_count += 1
                         else:
                             raise ValueError(f"Unexpected format: {type(pred)}")
 
                         Z_mean[i, j] = pred_mean
                         Z_sem[i, j] = pred_sem
-
-                        if idx == 0:
-                            print(f"DEBUG: After assignment, Z_sem[{i}, {j}] = {Z_sem[i, j]}")
-
                         idx += 1
 
                 print(f"✓ Predicted {len(parameterizations)} points")
-                print(f"DEBUG: Loop completed, processed {idx} predictions")
-                print(f"DEBUG: Non-zero SEM count: {non_zero_count}")
-                print(f"DEBUG: Z_sem shape: {Z_sem.shape}")
-                print(f"DEBUG: Z_sem stats BEFORE plot - min={Z_sem.min()}, max={Z_sem.max()}, mean={Z_sem.mean()}")
 
             except Exception as e:
                 print(f"\n{'='*60}")
@@ -1031,8 +1011,9 @@ class BayesianOptimizer:
                 metric_names=[self.response_column]
             )
 
-            Z_mean = np.zeros_like(X)
-            Z_sem = np.zeros_like(X)
+            # IMPORTANT: Use dtype=float to prevent truncation when X is integer (categorical factors)
+            Z_mean = np.zeros_like(X, dtype=float)
+            Z_sem = np.zeros_like(X, dtype=float)
             idx = 0
             for i in range(X.shape[0]):
                 for j in range(X.shape[1]):
