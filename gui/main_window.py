@@ -67,9 +67,9 @@ class ProteinDoESuite(tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Import tab classes (will create these next)
-        from gui.tabs.designer_tab import DesignerTab
-        from gui.tabs.analysis_tab import AnalysisTab
+        # Import tab classes from new module structure
+        from gui.tabs.designer import DesignerTab
+        from gui.tabs.analysis import AnalysisTab
 
         # Create tabs
         self.designer_tab = DesignerTab(self.notebook, self.project, self)
