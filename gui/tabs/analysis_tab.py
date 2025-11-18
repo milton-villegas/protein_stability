@@ -530,16 +530,21 @@ class AnalysisTab(ttk.Frame):
                                           values=['Maximize', 'Minimize'],
                                           state='readonly', width=10)
             direction_combo.grid(row=idx+1, column=1, padx=10, pady=2)
+            direction_combo.bind('<<ComboboxSelected>>', lambda e: self._update_selected_responses())
 
             # Min constraint entry
             min_var = tk.StringVar(value='')
             min_entry = ttk.Entry(self.response_frame, textvariable=min_var, width=10)
             min_entry.grid(row=idx+1, column=2, padx=5, pady=2)
+            min_entry.bind('<FocusOut>', lambda e: self._update_selected_responses())
+            min_entry.bind('<Return>', lambda e: self._update_selected_responses())
 
             # Max constraint entry
             max_var = tk.StringVar(value='')
             max_entry = ttk.Entry(self.response_frame, textvariable=max_var, width=10)
             max_entry.grid(row=idx+1, column=3, padx=5, pady=2)
+            max_entry.bind('<FocusOut>', lambda e: self._update_selected_responses())
+            max_entry.bind('<Return>', lambda e: self._update_selected_responses())
 
             # Store references
             self.response_checkboxes[col_name] = (var, direction_var, min_var, max_var)
@@ -613,9 +618,17 @@ class AnalysisTab(ttk.Frame):
             messagebox.showwarning("Warning", "Please select a data file first.")
             return
 
+        # Update selected responses to capture latest dropdown/constraint values
+        self._update_selected_responses()
+
         if not self.selected_responses:
             messagebox.showwarning("Warning", "Please select at least one response variable.")
             return
+
+        print(f"\n[DEBUG ANALYZE] Starting analysis with:")
+        print(f"  - Selected responses: {self.selected_responses}")
+        print(f"  - Response directions: {self.response_directions}")
+        print(f"  - Response constraints: {self.response_constraints}")
 
         self.main_window.update_status("Analyzing...")
         self.update()
