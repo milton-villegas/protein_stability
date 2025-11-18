@@ -209,26 +209,16 @@ class BayesianOptimizer:
                 try:
                     if 'min' in constraint:
                         min_val = constraint['min']
-                        print(f"    Creating OutcomeConstraint: {response} >= {min_val}")
-                        oc = OutcomeConstraint(
-                            metric=response,
-                            op=ComparisonOp.GEQ,
-                            bound=min_val,
-                            relative=False
-                        )
-                        outcome_constraints.append(oc)
-                        print(f"    ✓ Added: {response} ≥ {min_val}")
+                        # AxClient expects constraints as strings: "metric >= value"
+                        constraint_str = f"{response} >= {min_val}"
+                        outcome_constraints.append(constraint_str)
+                        print(f"    ✓ Added: {constraint_str}")
                     if 'max' in constraint:
                         max_val = constraint['max']
-                        print(f"    Creating OutcomeConstraint: {response} <= {max_val}")
-                        oc = OutcomeConstraint(
-                            metric=response,
-                            op=ComparisonOp.LEQ,
-                            bound=max_val,
-                            relative=False
-                        )
-                        outcome_constraints.append(oc)
-                        print(f"    ✓ Added: {response} ≤ {max_val}")
+                        # AxClient expects constraints as strings: "metric <= value"
+                        constraint_str = f"{response} <= {max_val}"
+                        outcome_constraints.append(constraint_str)
+                        print(f"    ✓ Added: {constraint_str}")
                 except Exception as e:
                     print(f"    ❌ ERROR creating constraint: {e}")
                     import traceback
