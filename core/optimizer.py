@@ -47,6 +47,7 @@ class BayesianOptimizer:
         self.is_multi_objective = False  # Track if using multi-objective optimization
         self.name_mapping = {}  # Maps sanitized names back to original names
         self.reverse_mapping = {}  # Maps original names to sanitized names
+        self.trial_metadata = {}  # Maps trial_index to original row data
     
     def _sanitize_name(self, name):
         """Replace spaces and special characters with underscores for Ax compatibility"""
@@ -247,6 +248,14 @@ class BayesianOptimizer:
             # Add trial
             _, trial_index = self.ax_client.attach_trial(parameters=params)
 
+            # Store metadata for this trial
+            metadata = {
+                'row_index': idx,
+                'id': row.get('ID', None) if 'ID' in row.index else None,
+                'parameters': {factor: row[factor] for factor in self.factor_columns}
+            }
+            self.trial_metadata[trial_index] = metadata
+
             # Build raw_data dict for all responses
             if self.is_multi_objective:
                 raw_data = {response: float(row[response]) for response in self.response_columns}
@@ -340,51 +349,39 @@ class BayesianOptimizer:
             # Convert to more usable format
             pareto_points = []
             for arm_name, (params, values) in pareto_frontier.items():
-                # Convert sanitized names back to original
-                original_params = {}
-                for sanitized_name, value in params.items():
-                    original_name = self.name_mapping[sanitized_name]
-                    original_params[original_name] = value
+                # Extract trial index from arm_name (format is typically "trial_index_arm_index")
+                trial_index = int(arm_name.split('_')[0])
+
+                # Get metadata for this trial
+                metadata = self.trial_metadata.get(trial_index, {})
+
+                # Use stored original parameters from metadata
+                original_params = metadata.get('parameters', {})
+
+                # If metadata not found, fall back to converting sanitized names
+                if not original_params:
+                    original_params = {}
+                    for sanitized_name, value in params.items():
+                        if sanitized_name in self.name_mapping:
+                            original_name = self.name_mapping[sanitized_name]
+                            original_params[original_name] = value
 
                 # Extract mean values from tuple: values = (mean_dict, cov_dict)
                 mean_dict = values[0] if isinstance(values, tuple) else values
 
-                # Match parameters to original data row to get ID
-                row_match = None
-                row_index = None
-                exp_id = None
-
-                for idx, row in self.data.iterrows():
-                    match = True
-                    for param_name, param_value in original_params.items():
-                        if param_name in row.index:
-                            if isinstance(param_value, float):
-                                if not np.isclose(row[param_name], param_value, rtol=1e-5):
-                                    match = False
-                                    break
-                            else:
-                                if row[param_name] != param_value:
-                                    match = False
-                                    break
-
-                    if match:
-                        row_match = row
-                        row_index = idx
-                        if 'ID' in row.index:
-                            exp_id = row['ID']
-                        break
-
                 pareto_points.append({
                     'parameters': original_params,
-                    'objectives': mean_dict,  # Dict of {response_name: mean_value}
-                    'id': exp_id,
-                    'row_index': row_index
+                    'objectives': mean_dict,
+                    'id': metadata.get('id'),
+                    'row_index': metadata.get('row_index')
                 })
 
             return pareto_points
 
         except Exception as e:
             print(f"⚠️  Could not extract Pareto frontier: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def calculate_hypervolume(self, reference_point=None):

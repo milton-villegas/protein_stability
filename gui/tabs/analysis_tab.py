@@ -1358,9 +1358,10 @@ class AnalysisTab(ttk.Frame):
                             # Display objectives
                             self.recommendations_text.insert(tk.END, "  Results:\n")
                             for resp, value in point['objectives'].items():
-                                direction = self.response_directions[resp]
+                                direction = self.response_directions.get(resp, 'maximize')
                                 arrow = '↑' if direction == 'maximize' else '↓'
-                                self.recommendations_text.insert(tk.END, f"    {arrow} {resp:<25}: {value:.4f}\n")
+                                direction_text = '(maximize)' if direction == 'maximize' else '(minimize)'
+                                self.recommendations_text.insert(tk.END, f"    {arrow} {resp:<25}: {value:.4f} {direction_text}\n")
 
                             if violations:
                                 self.recommendations_text.insert(tk.END, "  ⚠️  Constraint Violations:\n")
