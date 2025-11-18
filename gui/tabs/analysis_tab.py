@@ -149,12 +149,6 @@ class AnalysisTab(ttk.Frame):
                                       command=self.analyze_data, state='disabled')
         self.analyze_btn.grid(row=0, column=3, padx=20, pady=5)
 
-        # Status bar
-        self.status_var = tk.StringVar(value="Ready")
-        status_bar = ttk.Label(self, textvariable=self.status_var,
-                              relief=tk.SUNKEN, anchor='w')
-        status_bar.pack(fill='x', side='bottom')
-
     def create_results_tab(self):
         """Create the Results tab with results notebook and export buttons"""
         # Get the parent notebook from main_window
@@ -435,9 +429,8 @@ class AnalysisTab(ttk.Frame):
         
         if filepath:
             self.filepath = filepath
-            # Keep label white/colored when file selected
             self.file_label.config(text=os.path.basename(filepath))
-            self.status_var.set(f"Loaded: {os.path.basename(filepath)}")
+            self.main_window.update_status(f"Loaded: {os.path.basename(filepath)}")
             
             try:
                 self.handler.load_excel(filepath)
@@ -450,20 +443,19 @@ class AnalysisTab(ttk.Frame):
                                        "Excel file must have at least one numeric column\n"
                                        "that can be used as a response variable.\n\n"
                                        "Numeric columns are needed for optimization.")
-                    self.status_var.set("Error: No numeric columns found")
+                    self.main_window.update_status("Error: No numeric columns found")
                     return
 
-                # Populate response selection UI
                 self._populate_response_selection(potential_responses)
 
-                self.status_var.set(f"Loaded: {len(potential_responses)} potential response(s) found")
+                self.main_window.update_status(f"Loaded: {len(potential_responses)} potential response(s) found")
 
             except Exception as e:
                 messagebox.showerror("File Load Failed",
                     f"Could not open the selected Excel file.\n\n"
                     f"Details: {str(e)}\n\n"
                     f"Make sure the file is not open in another program.")
-                self.status_var.set("Error loading file")
+                self.main_window.update_status("Error loading file")
 
     def _populate_response_selection(self, potential_responses):
         """Create checkboxes for response selection with maximize/minimize options"""
@@ -526,13 +518,12 @@ class AnalysisTab(ttk.Frame):
                 direction = 'minimize' if direction_var.get() == 'Minimize' else 'maximize'
                 self.response_directions[col_name] = direction
 
-        # Enable analyze button only if at least one response selected
         if self.selected_responses:
             self.analyze_btn.config(state='normal')
-            self.status_var.set(f"Ready to analyze {len(self.selected_responses)} response(s)")
+            self.main_window.update_status(f"Ready to analyze {len(self.selected_responses)} response(s)")
         else:
             self.analyze_btn.config(state='disabled')
-            self.status_var.set("Please select at least one response variable")
+            self.main_window.update_status("Please select at least one response variable")
 
     def analyze_data(self):
         """Perform DoE analysis"""
@@ -544,7 +535,7 @@ class AnalysisTab(ttk.Frame):
             messagebox.showwarning("Warning", "Please select at least one response variable.")
             return
 
-        self.status_var.set("Analyzing...")
+        self.main_window.update_status("Analyzing...")
         self.update()
 
         try:
@@ -576,9 +567,8 @@ class AnalysisTab(ttk.Frame):
 
             selected_model = model_mapping[selected_option]
 
-            # Multi-response analysis: analyze each response separately
             if len(self.selected_responses) > 1:
-                self.status_var.set(f"Analyzing {len(self.selected_responses)} responses...")
+                self.main_window.update_status(f"Analyzing {len(self.selected_responses)} responses...")
                 self.update()
 
                 # Compare all models for all responses (this fits all models)
@@ -613,8 +603,7 @@ class AnalysisTab(ttk.Frame):
                         }
                         self.chosen_models[response_name] = chosen
 
-                    # Re-fit the chosen model for detailed analysis (same as single-response flow)
-                    self.status_var.set(f"Fitting {response_name} with {chosen} model...")
+                    self.main_window.update_status(f"Fitting {response_name} with {chosen} model...")
                     self.update()
 
                     self.all_results[response_name] = self.analyzer.fit_model(chosen, response_name=response_name)
@@ -630,8 +619,7 @@ class AnalysisTab(ttk.Frame):
                 mode_description = "Auto-selected" if selected_model is None else "User selected"
 
             else:
-                # Single response analysis (backward compatible)
-                self.status_var.set("Comparing all models...")
+                self.main_window.update_status("Comparing all models...")
                 self.update()
 
                 self.model_comparison = self.analyzer.compare_all_models()
@@ -652,7 +640,7 @@ class AnalysisTab(ttk.Frame):
                     self.model_selection = {'recommended_model': chosen_model, 'reason': 'User selected'}
                     mode_description = "User selected"
 
-                self.status_var.set(f"Using {mode_description.lower()} model: {chosen_model}...")
+                self.main_window.update_status(f"Using {mode_description.lower()} model: {chosen_model}...")
                 self.update()
 
                 # Fit the chosen model for detailed analysis
@@ -674,9 +662,8 @@ class AnalysisTab(ttk.Frame):
             chosen_model_name = self.analyzer.MODEL_TYPES[chosen_model]
 
             if len(self.selected_responses) > 1:
-                # Multi-response completion message
                 avg_r2 = sum(r['model_stats']['R-squared'] for r in self.all_results.values()) / len(self.all_results)
-                self.status_var.set(f"Analysis complete! {len(self.selected_responses)} responses analyzed | Avg R² = {avg_r2:.4f}")
+                self.main_window.update_status(f"Analysis complete! {len(self.selected_responses)} responses analyzed | Avg R² = {avg_r2:.4f}")
 
                 messagebox.showinfo("Success",
                                   f"Multi-response analysis completed successfully!\n\n"
@@ -685,8 +672,7 @@ class AnalysisTab(ttk.Frame):
                                   f"Observations: {self.results['model_stats']['Observations']}\n\n"
                                   f"Check the Results tab for detailed analysis of each response.")
             else:
-                # Single response completion message
-                self.status_var.set(f"Analysis complete! Model: {chosen_model_name} | R² = {self.results['model_stats']['R-squared']:.4f}")
+                self.main_window.update_status(f"Analysis complete! Model: {chosen_model_name} | R² = {self.results['model_stats']['R-squared']:.4f}")
 
                 messagebox.showinfo("Success",
                                   f"Analysis completed successfully!\n\n"
@@ -712,7 +698,7 @@ class AnalysisTab(ttk.Frame):
                 f"Statistical analysis could not be completed.\n\n"
                 f"Error: {str(e)}\n\n"
                 f"Check that your data includes all required columns and valid numeric values.")
-            self.status_var.set("Analysis failed")
+            self.main_window.update_status("Analysis failed")
     
     def _display_single_response_statistics(self, results, model_comparison, model_selection, response_name):
         """Display statistics for a single response (helper for multi-response display)"""
