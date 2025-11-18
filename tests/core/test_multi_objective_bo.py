@@ -274,6 +274,53 @@ class TestMultiObjectiveBO:
         assert isinstance(objectives['Tm'], (int, float, np.number))
         assert isinstance(objectives['Aggregation'], (int, float, np.number))
 
+    def test_pareto_frontier_with_id_column(self):
+        """Test that Pareto frontier includes ID and row_index from original data"""
+        np.random.seed(42)
+        n = 15
+
+        # Create data with ID column
+        data = pd.DataFrame({
+            'ID': range(1, n + 1),
+            'Buffer pH': np.random.choice([6, 7, 8, 9], n),
+            'NaCl (mM)': np.random.uniform(0, 200, n),
+            'Glycerol (%)': np.random.uniform(0, 20, n),
+            'Tm': np.random.uniform(45, 55, n),
+            'Aggregation': np.random.uniform(5, 15, n)
+        })
+
+        optimizer = BayesianOptimizer()
+        optimizer.set_data(
+            data=data,
+            factor_columns=['Buffer pH', 'NaCl (mM)', 'Glycerol (%)'],
+            categorical_factors=['Buffer pH'],
+            numeric_factors=['NaCl (mM)', 'Glycerol (%)'],
+            response_columns=['Tm', 'Aggregation'],
+            response_directions={'Tm': 'maximize', 'Aggregation': 'minimize'}
+        )
+
+        optimizer.initialize_optimizer()
+        pareto_points = optimizer.get_pareto_frontier()
+
+        assert pareto_points is not None
+        assert len(pareto_points) > 0
+
+        # Check that each Pareto point has id and row_index
+        for point in pareto_points:
+            assert 'id' in point
+            assert 'row_index' in point
+            assert 'parameters' in point
+            assert 'objectives' in point
+
+            # ID should be an integer from 1 to n
+            if point['id'] is not None:
+                assert isinstance(point['id'], (int, np.integer))
+                assert 1 <= point['id'] <= n
+
+            # row_index should be valid
+            if point['row_index'] is not None:
+                assert point['row_index'] in data.index
+
 
 class TestMultiObjectivePlotting:
     """Test plotting functionality for multi-objective optimization"""
