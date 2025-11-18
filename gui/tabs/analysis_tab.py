@@ -697,13 +697,22 @@ class AnalysisTab(ttk.Frame):
                                   f"Check the Results tab for detailed analysis.")
 
         except Exception as e:
+            import traceback
+            print(f"\n{'='*60}")
+            print(f"❌ ANALYSIS ERROR")
+            print(f"{'='*60}")
+            print(f"Error type: {type(e).__name__}")
+            print(f"Error message: {str(e)}")
+            print(f"Selected responses: {self.selected_responses}")
+            print(f"{'='*60}")
+            traceback.print_exc()
+            print(f"{'='*60}\n")
+
             messagebox.showerror("Analysis Failed",
                 f"Statistical analysis could not be completed.\n\n"
                 f"Error: {str(e)}\n\n"
                 f"Check that your data includes all required columns and valid numeric values.")
             self.status_var.set("Analysis failed")
-            import traceback
-            traceback.print_exc()
     
     def _display_single_response_statistics(self, results, model_comparison, model_selection, response_name):
         """Display statistics for a single response (helper for multi-response display)"""
