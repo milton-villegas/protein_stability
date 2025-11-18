@@ -181,10 +181,16 @@ class AnalysisTab(ttk.Frame):
         self.notebook.pack(fill='both', expand=True)
 
         # Tab 1: Statistics
-        self.stats_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.stats_frame, text="Statistics")
+        stats_container = ttk.Frame(self.notebook)
+        self.notebook.add(stats_container, text="Statistics")
 
-        self.stats_text = scrolledtext.ScrolledText(self.stats_frame, wrap=tk.WORD, font=('Courier', 14))
+        stats_header = ttk.Frame(stats_container)
+        stats_header.pack(fill='x', padx=5, pady=2)
+        ttk.Label(stats_header, text="Statistical Analysis Results", font=('TkDefaultFont', 10, 'bold')).pack(side='left')
+        ttk.Button(stats_header, text="ℹ️", width=3,
+                  command=lambda: self.show_tooltip("statistics")).pack(side='right', padx=5)
+
+        self.stats_text = scrolledtext.ScrolledText(stats_container, wrap=tk.WORD, font=('Courier', 14))
         self.stats_text.pack(fill='both', expand=True, padx=5, pady=5)
 
         # Tab 2: Main Effects
@@ -224,11 +230,17 @@ class AnalysisTab(ttk.Frame):
         self.residuals_frame = self.create_scrollable_frame(residuals_container)
 
         # Tab 5: Recommendations
-        self.recommendations_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.recommendations_frame, text="Recommendations")
+        recommendations_container = ttk.Frame(self.notebook)
+        self.notebook.add(recommendations_container, text="Recommendations")
+
+        rec_header = ttk.Frame(recommendations_container)
+        rec_header.pack(fill='x', padx=5, pady=2)
+        ttk.Label(rec_header, text="Next Experiments", font=('TkDefaultFont', 10, 'bold')).pack(side='left')
+        ttk.Button(rec_header, text="ℹ️", width=3,
+                  command=lambda: self.show_tooltip("recommendations")).pack(side='right', padx=5)
 
         if AX_AVAILABLE:
-            export_frame_rec = ttk.LabelFrame(self.recommendations_frame, text="Export", padding=10)
+            export_frame_rec = ttk.LabelFrame(recommendations_container, text="Export", padding=10)
             export_frame_rec.pack(fill='x', padx=10, pady=5)
 
             self.export_bo_button = ttk.Button(export_frame_rec, text="📤 Export BO Batch",
@@ -238,7 +250,7 @@ class AnalysisTab(ttk.Frame):
             ttk.Label(export_frame_rec, text="(Available after analysis with BO suggestions)",
                      font=('TkDefaultFont', 9)).pack(side='left', padx=5)
 
-        self.recommendations_text = scrolledtext.ScrolledText(self.recommendations_frame,
+        self.recommendations_text = scrolledtext.ScrolledText(recommendations_container,
                                                              wrap=tk.WORD, font=('Courier', 14))
         self.recommendations_text.pack(fill='both', expand=True, padx=5, pady=5)
 
@@ -354,6 +366,17 @@ class AnalysisTab(ttk.Frame):
     def show_tooltip(self, plot_type):
         """Show interpretation guidance for different plot types"""
         tooltips = {
+            "statistics": (
+                "How to Read Statistical Analysis Results\n\n"
+                "• R-squared (R²) = How well the model fits (0-1, higher is better)\n"
+                "• p-value < 0.05 = Factor is statistically significant\n"
+                "• Coefficient = Effect size and direction (+ or -)\n"
+                "• Adjusted R² = R² adjusted for number of factors\n\n"
+                "Look for:\n"
+                "• High R² (>0.7) indicates good model fit\n"
+                "• Significant factors (p < 0.05) with asterisks ***\n"
+                "• Large absolute coefficients = stronger effects"
+            ),
             "main_effects": (
                 "How to Read Main Effects Plot\n\n"
                 "• Steeper slopes = Stronger factor influence on response\n"
@@ -381,6 +404,18 @@ class AnalysisTab(ttk.Frame):
                 "If residuals look bad, your statistical conclusions may be unreliable.\n"
                 "Consider trying a different model type or checking for data errors."
             ),
+            "recommendations": (
+                "How to Read Next Experiments\n\n"
+                "Bayesian Optimization (BO) suggests intelligent next experiments:\n\n"
+                "• Suggestions are ranked by expected improvement\n"
+                "• BO balances exploration (new regions) vs exploitation (promising regions)\n"
+                "• Each suggestion shows predicted factor values\n"
+                "• Run suggested experiments to improve your response\n\n"
+                "Tips:\n"
+                "• Start with top 3-5 suggestions\n"
+                "• Add results back to dataset and re-analyze\n"
+                "• BO gets smarter with each iteration"
+            ),
             "optimization": (
                 "How to Read Optimization Details\n\n"
                 "This plot shows where Bayesian Optimization predicts you should explore:\n\n"
@@ -392,7 +427,7 @@ class AnalysisTab(ttk.Frame):
                 "that balance exploring new areas with exploiting promising regions."
             )
         }
-        
+
         messagebox.showinfo("Plot Interpretation Guide", tooltips.get(plot_type, "No guide available"))
     
     def show_model_guide(self):
