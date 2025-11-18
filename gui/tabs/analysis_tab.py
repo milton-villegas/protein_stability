@@ -1200,28 +1200,62 @@ class AnalysisTab(ttk.Frame):
         print(f"[DEBUG BEST] Finding best experiment for '{self.handler.response_column}'")
         print(f"  - Direction: {response_direction}")
         print(f"  - Value range: {clean_data[self.handler.response_column].min()} to {clean_data[self.handler.response_column].max()}")
+        print(f"  - Constraints: {self.response_constraints.get(self.handler.response_column, 'None')}")
 
-        # Find best based on direction
-        if response_direction == 'minimize':
-            best_idx = clean_data[self.handler.response_column].idxmin()
-            print(f"  - Using idxmin() for minimize")
-        else:
-            best_idx = clean_data[self.handler.response_column].idxmax()
-            print(f"  - Using idxmax() for maximize")
+        # Filter by constraints if any exist for this response
+        filtered_data = clean_data.copy()
+        constraint_applied = False
+        constraint_msg = ""
 
-        optimal_response = clean_data.loc[best_idx, self.handler.response_column]
-        print(f"  - Best value: {optimal_response} at index {best_idx}")
+        if self.handler.response_column in self.response_constraints:
+            constraint = self.response_constraints[self.handler.response_column]
+            original_count = len(filtered_data)
+
+            if 'min' in constraint:
+                min_val = constraint['min']
+                filtered_data = filtered_data[filtered_data[self.handler.response_column] >= min_val]
+                constraint_msg += f" >= {min_val}"
+                constraint_applied = True
+
+            if 'max' in constraint:
+                max_val = constraint['max']
+                filtered_data = filtered_data[filtered_data[self.handler.response_column] <= max_val]
+                constraint_msg += f" <= {max_val}" if not constraint_msg else f" and <= {max_val}"
+                constraint_applied = True
+
+            print(f"  - After constraint filtering: {len(filtered_data)}/{original_count} experiments remain")
 
         self.recommendations_text.insert(tk.END, "="*80 + "\n")
         self.recommendations_text.insert(tk.END, "BEST OBSERVED EXPERIMENT\n")
         self.recommendations_text.insert(tk.END, "-"*80 + "\n")
 
+        # Check if any experiments meet constraints
+        if constraint_applied and len(filtered_data) == 0:
+            self.recommendations_text.insert(tk.END, f"⚠️  WARNING: No experiments meet the constraint {self.handler.response_column}{constraint_msg}\n\n")
+            self.recommendations_text.insert(tk.END, f"Your data range: {clean_data[self.handler.response_column].min():.2f} to {clean_data[self.handler.response_column].max():.2f}\n")
+            self.recommendations_text.insert(tk.END, f"Constraint requires: {self.handler.response_column}{constraint_msg}\n\n")
+            self.recommendations_text.insert(tk.END, "Showing best experiment WITHOUT constraint applied:\n\n")
+            filtered_data = clean_data.copy()
+            constraint_applied = False
+
+        # Find best based on direction
+        if response_direction == 'minimize':
+            best_idx = filtered_data[self.handler.response_column].idxmin()
+            print(f"  - Using idxmin() for minimize")
+        else:
+            best_idx = filtered_data[self.handler.response_column].idxmax()
+            print(f"  - Using idxmax() for maximize")
+
+        optimal_response = filtered_data.loc[best_idx, self.handler.response_column]
+        print(f"  - Best value: {optimal_response} at index {best_idx}")
+
         # Show ID if available
         direction_text = "lowest" if response_direction == 'minimize' else "highest"
-        header = f"This is the experiment with the {direction_text} {self.handler.response_column}."
+        constraint_text = f" (meeting constraint{constraint_msg})" if constraint_applied else ""
+        header = f"This is the experiment with the {direction_text} {self.handler.response_column}{constraint_text}."
         if 'ID' in clean_data.columns:
             exp_id = clean_data.loc[best_idx, 'ID']
-            header = f"Best Experiment: ID {exp_id} ({direction_text} {self.handler.response_column})"
+            header = f"Best Experiment: ID {exp_id} ({direction_text} {self.handler.response_column}{constraint_text})"
         self.recommendations_text.insert(tk.END, header + "\n\n")
 
         self.recommendations_text.insert(tk.END, "Experimental Conditions:\n")

@@ -198,9 +198,14 @@ class BayesianOptimizer:
 
         # Build outcome constraints from response_constraints
         outcome_constraints = []
+        print(f"\n[DEBUG INIT] Building outcome constraints...")
+        print(f"  self.response_constraints = {self.response_constraints}")
+        print(f"  self.exploration_mode = {self.exploration_mode}")
+
         if self.response_constraints and not self.exploration_mode:
-            print(f"\n[DEBUG INIT] Applying response constraints:")
+            print(f"[DEBUG INIT] Applying response constraints to Ax:")
             for response, constraint in self.response_constraints.items():
+                print(f"  Processing constraint for '{response}': {constraint}")
                 if 'min' in constraint:
                     min_val = constraint['min']
                     outcome_constraints.append(
@@ -211,7 +216,7 @@ class BayesianOptimizer:
                             relative=False
                         )
                     )
-                    print(f"  {response} ≥ {min_val}")
+                    print(f"    ✓ Added: {response} ≥ {min_val}")
                 if 'max' in constraint:
                     max_val = constraint['max']
                     outcome_constraints.append(
@@ -222,10 +227,10 @@ class BayesianOptimizer:
                             relative=False
                         )
                     )
-                    print(f"  {response} ≤ {max_val}")
-            print(f"  Total constraints added to Ax: {len(outcome_constraints)}")
+                    print(f"    ✓ Added: {response} ≤ {max_val}")
+            print(f"[DEBUG INIT] Total constraints added to Ax: {len(outcome_constraints)}")
         elif self.response_constraints and self.exploration_mode:
-            print(f"\n[DEBUG INIT] Exploration mode enabled - constraints tracked but NOT enforced:")
+            print(f"[DEBUG INIT] Exploration mode enabled - constraints tracked but NOT enforced:")
             for response, constraint in self.response_constraints.items():
                 parts = []
                 if 'min' in constraint:
@@ -235,7 +240,7 @@ class BayesianOptimizer:
                 if parts:
                     print(f"  {' and '.join(parts)} (guidance only)")
         else:
-            print(f"\n[DEBUG INIT] No constraints applied")
+            print(f"[DEBUG INIT] No constraints to apply")
 
         # Create Ax client
         self.ax_client = AxClient()
