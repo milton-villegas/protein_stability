@@ -551,6 +551,16 @@ class AnalysisTab(ttk.Frame):
         note_label.grid(row=len(potential_responses)+1, column=0, columnspan=5,
                        sticky='w', padx=5, pady=5)
 
+        # Exploration mode checkbox
+        self.exploration_mode_var = tk.BooleanVar(value=False)
+        exploration_cb = ttk.Checkbutton(
+            self.response_frame,
+            text="Allow exploration outside bounds (20% of suggestions may violate constraints)",
+            variable=self.exploration_mode_var
+        )
+        exploration_cb.grid(row=len(potential_responses)+2, column=0, columnspan=5,
+                           sticky='w', padx=20, pady=5)
+
         # Initial update
         self._update_selected_responses()
 
@@ -1252,6 +1262,8 @@ class AnalysisTab(ttk.Frame):
             
             try:
                 # Initialize optimizer with current data (multi-response support)
+                exploration_mode = self.exploration_mode_var.get() if hasattr(self, 'exploration_mode_var') else False
+
                 self.optimizer.set_data(
                     data=self.handler.clean_data,
                     factor_columns=self.handler.factor_columns,
@@ -1259,7 +1271,8 @@ class AnalysisTab(ttk.Frame):
                     numeric_factors=self.handler.numeric_factors,
                     response_columns=self.selected_responses,
                     response_directions=self.response_directions,
-                    response_constraints=self.response_constraints
+                    response_constraints=self.response_constraints,
+                    exploration_mode=exploration_mode
                 )
                 self.optimizer.initialize_optimizer()
                 

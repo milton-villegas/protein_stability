@@ -41,6 +41,7 @@ class BayesianOptimizer:
         self.response_columns = []  # Multi-response support
         self.response_directions = {}  # {response_name: 'maximize' or 'minimize'}
         self.response_constraints = {}  # {response_name: {'min': val, 'max': val}}
+        self.exploration_mode = False  # Allow suggestions outside constraints
         self.factor_bounds = {}
         self.is_initialized = False
         self.is_multi_objective = False  # Track if using multi-objective optimization
@@ -54,7 +55,7 @@ class BayesianOptimizer:
     
     def set_data(self, data, factor_columns, categorical_factors, numeric_factors,
                  response_column=None, response_columns=None, response_directions=None,
-                 response_constraints=None):
+                 response_constraints=None, exploration_mode=False):
         """Set data and factor information
 
         Args:
@@ -62,6 +63,7 @@ class BayesianOptimizer:
             response_columns: List of response columns (multi-objective)
             response_directions: Dict of {response_name: 'maximize' or 'minimize'}
             response_constraints: Dict of {response_name: {'min': val, 'max': val}}
+            exploration_mode: Allow suggestions outside constraints for exploration
         """
         self.data = data.copy()
         self.factor_columns = factor_columns
@@ -87,6 +89,9 @@ class BayesianOptimizer:
 
         # Store response constraints
         self.response_constraints = response_constraints or {}
+
+        # Store exploration mode
+        self.exploration_mode = exploration_mode
 
         # Multi-objective if more than one response
         self.is_multi_objective = len(self.response_columns) > 1
@@ -177,7 +182,7 @@ class BayesianOptimizer:
 
         # Build outcome constraints from response_constraints
         outcome_constraints = []
-        if self.response_constraints:
+        if self.response_constraints and not self.exploration_mode:
             print(f"ℹ️  Applying response constraints:")
             for response, constraint in self.response_constraints.items():
                 if 'min' in constraint:
@@ -202,6 +207,16 @@ class BayesianOptimizer:
                         )
                     )
                     print(f"     {response} ≤ {max_val}")
+        elif self.response_constraints and self.exploration_mode:
+            print(f"ℹ️  Exploration mode enabled - constraints will be tracked but not enforced:")
+            for response, constraint in self.response_constraints.items():
+                parts = []
+                if 'min' in constraint:
+                    parts.append(f"{response} ≥ {constraint['min']}")
+                if 'max' in constraint:
+                    parts.append(f"{response} ≤ {constraint['max']}")
+                if parts:
+                    print(f"     {' and '.join(parts)} (guidance only)")
 
         # Create Ax client
         self.ax_client = AxClient()
@@ -245,7 +260,33 @@ class BayesianOptimizer:
 
         self.is_initialized = True
         print(f"✓ Initialized BO with {len(self.data)} existing trials")
-    
+
+    def check_constraint_violations(self, predicted_values):
+        """Check if predicted response values violate constraints
+
+        Args:
+            predicted_values: Dict of {response_name: value}
+
+        Returns:
+            List of constraint violation messages
+        """
+        violations = []
+        if not self.response_constraints:
+            return violations
+
+        for response, constraint in self.response_constraints.items():
+            if response not in predicted_values:
+                continue
+
+            value = predicted_values[response]
+
+            if 'min' in constraint and value < constraint['min']:
+                violations.append(f"{response} = {value:.2f} < {constraint['min']} (min)")
+            if 'max' in constraint and value > constraint['max']:
+                violations.append(f"{response} = {value:.2f} > {constraint['max']} (max)")
+
+        return violations
+
     def get_next_suggestions(self, n=5):
         """Get next experiment suggestions with original factor names and proper rounding"""
         if not self.is_initialized:
