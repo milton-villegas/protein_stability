@@ -83,19 +83,29 @@ class BayesianOptimizer:
 
         # Store optimization directions
         self.response_directions = response_directions or {}
+        print(f"[DEBUG OPTIMIZER] set_data() received:")
+        print(f"  - response_columns: {self.response_columns}")
+        print(f"  - response_directions (input): {response_directions}")
+
         # Default to maximize if not specified
         for resp in self.response_columns:
             if resp not in self.response_directions:
                 self.response_directions[resp] = 'maximize'
+                print(f"  - '{resp}' direction not specified, defaulting to 'maximize'")
+
+        print(f"  - response_directions (final): {self.response_directions}")
 
         # Store response constraints
         self.response_constraints = response_constraints or {}
+        print(f"  - response_constraints: {self.response_constraints}")
 
         # Store exploration mode
         self.exploration_mode = exploration_mode
+        print(f"  - exploration_mode: {self.exploration_mode}")
 
         # Multi-objective if more than one response
         self.is_multi_objective = len(self.response_columns) > 1
+        print(f"  - is_multi_objective: {self.is_multi_objective}")
 
         # Create name mappings
         self.reverse_mapping = {name: self._sanitize_name(name) for name in factor_columns}

@@ -576,6 +576,8 @@ class AnalysisTab(ttk.Frame):
                 direction = 'minimize' if direction_var.get() == 'Minimize' else 'maximize'
                 self.response_directions[col_name] = direction
 
+                print(f"[DEBUG UI] Response '{col_name}': direction={direction} (UI dropdown value: '{direction_var.get()}')")
+
                 min_val = min_var.get().strip()
                 max_val = max_var.get().strip()
 
@@ -583,12 +585,16 @@ class AnalysisTab(ttk.Frame):
                 if min_val:
                     try:
                         constraint['min'] = float(min_val)
+                        print(f"[DEBUG UI] Response '{col_name}': min constraint = {constraint['min']}")
                     except ValueError:
+                        print(f"[DEBUG UI] Response '{col_name}': invalid min value '{min_val}'")
                         pass
                 if max_val:
                     try:
                         constraint['max'] = float(max_val)
+                        print(f"[DEBUG UI] Response '{col_name}': max constraint = {constraint['max']}")
                     except ValueError:
+                        print(f"[DEBUG UI] Response '{col_name}': invalid max value '{max_val}'")
                         pass
 
                 if constraint:
@@ -1172,31 +1178,48 @@ class AnalysisTab(ttk.Frame):
         self.recommendations_text.insert(tk.END, "-"*80 + "\n")
         self.recommendations_text.insert(tk.END, f"Based on R² = {r_squared:.3f}, {n_obs} observations, {len(sig_factors)} significant factors\n\n")
         
-        # Find optimal condition from data (row with highest response)
+        # Find optimal condition from data based on optimization direction
         clean_data = self.handler.clean_data
-        max_idx = clean_data[self.handler.response_column].idxmax()
-        optimal_response = clean_data.loc[max_idx, self.handler.response_column]
+
+        # Get direction for this response (default to maximize for backward compatibility)
+        response_direction = self.response_directions.get(self.handler.response_column, 'maximize')
+
+        print(f"[DEBUG BEST] Finding best experiment for '{self.handler.response_column}'")
+        print(f"  - Direction: {response_direction}")
+        print(f"  - Value range: {clean_data[self.handler.response_column].min()} to {clean_data[self.handler.response_column].max()}")
+
+        # Find best based on direction
+        if response_direction == 'minimize':
+            best_idx = clean_data[self.handler.response_column].idxmin()
+            print(f"  - Using idxmin() for minimize")
+        else:
+            best_idx = clean_data[self.handler.response_column].idxmax()
+            print(f"  - Using idxmax() for maximize")
+
+        optimal_response = clean_data.loc[best_idx, self.handler.response_column]
+        print(f"  - Best value: {optimal_response} at index {best_idx}")
 
         self.recommendations_text.insert(tk.END, "="*80 + "\n")
         self.recommendations_text.insert(tk.END, "BEST OBSERVED EXPERIMENT\n")
         self.recommendations_text.insert(tk.END, "-"*80 + "\n")
 
         # Show ID if available
-        header = "This is the best experiment you already ran."
+        direction_text = "lowest" if response_direction == 'minimize' else "highest"
+        header = f"This is the experiment with the {direction_text} {self.handler.response_column}."
         if 'ID' in clean_data.columns:
-            exp_id = clean_data.loc[max_idx, 'ID']
-            header = f"Best Experiment: ID {exp_id}"
+            exp_id = clean_data.loc[best_idx, 'ID']
+            header = f"Best Experiment: ID {exp_id} ({direction_text} {self.handler.response_column})"
         self.recommendations_text.insert(tk.END, header + "\n\n")
 
         self.recommendations_text.insert(tk.END, "Experimental Conditions:\n")
         for factor in self.handler.factor_columns:
-            value = clean_data.loc[max_idx, factor]
+            value = clean_data.loc[best_idx, factor]
             if isinstance(value, float):
                 self.recommendations_text.insert(tk.END, f"  • {factor:<30}: {value:.2f}\n")
             else:
                 self.recommendations_text.insert(tk.END, f"  • {factor:<30}: {value}\n")
 
-        self.recommendations_text.insert(tk.END, f"\nResult:\n  • {self.handler.response_column:<30}: {optimal_response:.2f}\n")
+        self.recommendations_text.insert(tk.END, f"\nResult:\n  • {self.handler.response_column:<30}: {optimal_response:.2f} ({response_direction})\n")
         
         # Predicted optimal based on model
         self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
@@ -1275,6 +1298,12 @@ class AnalysisTab(ttk.Frame):
                 # Initialize optimizer with current data (multi-response support)
                 exploration_mode = self.exploration_mode_var.get() if hasattr(self, 'exploration_mode_var') else False
 
+                print(f"[DEBUG ANALYSIS] Setting optimizer data:")
+                print(f"  - Response columns: {self.selected_responses}")
+                print(f"  - Response directions: {self.response_directions}")
+                print(f"  - Response constraints: {self.response_constraints}")
+                print(f"  - Exploration mode: {exploration_mode}")
+
                 self.optimizer.set_data(
                     data=self.handler.clean_data,
                     factor_columns=self.handler.factor_columns,
@@ -1285,6 +1314,12 @@ class AnalysisTab(ttk.Frame):
                     response_constraints=self.response_constraints,
                     exploration_mode=exploration_mode
                 )
+
+                print(f"[DEBUG ANALYSIS] After set_data:")
+                print(f"  - Optimizer.response_directions: {self.optimizer.response_directions}")
+                print(f"  - Optimizer.response_constraints: {self.optimizer.response_constraints}")
+                print(f"  - Optimizer.is_multi_objective: {self.optimizer.is_multi_objective}")
+
                 self.optimizer.initialize_optimizer()
 
                 # Show constraint information
