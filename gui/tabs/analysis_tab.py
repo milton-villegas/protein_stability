@@ -92,6 +92,9 @@ class AnalysisTab(ttk.Frame):
         self.selected_responses = []  # List of selected response column names
         self.response_directions = {}  # {column_name: 'maximize' or 'minimize'}
 
+        # Debug log collector
+        self.debug_log = []
+
         # Setup GUI
         self.setup_gui()
         
@@ -569,6 +572,11 @@ class AnalysisTab(ttk.Frame):
         # Initial update
         self._update_selected_responses()
 
+    def _debug_log(self, message):
+        """Collect debug messages to display at the end"""
+        self.debug_log.append(message)
+        print(message)  # Still print to console for real-time debugging
+
     def _update_selected_responses(self):
         """Update selected responses list and enable/disable analyze button"""
         self.selected_responses = []
@@ -581,7 +589,7 @@ class AnalysisTab(ttk.Frame):
                 direction = 'minimize' if direction_var.get() == 'Minimize' else 'maximize'
                 self.response_directions[col_name] = direction
 
-                print(f"[DEBUG UI] Response '{col_name}': direction={direction} (UI dropdown value: '{direction_var.get()}')")
+                self._debug_log(f"[DEBUG UI] Response '{col_name}': direction={direction} (UI dropdown value: '{direction_var.get()}')")
 
                 min_val = min_var.get().strip()
                 max_val = max_var.get().strip()
@@ -590,16 +598,16 @@ class AnalysisTab(ttk.Frame):
                 if min_val:
                     try:
                         constraint['min'] = float(min_val)
-                        print(f"[DEBUG UI] Response '{col_name}': min constraint = {constraint['min']}")
+                        self._debug_log(f"[DEBUG UI] Response '{col_name}': min constraint = {constraint['min']}")
                     except ValueError:
-                        print(f"[DEBUG UI] Response '{col_name}': invalid min value '{min_val}'")
+                        self._debug_log(f"[DEBUG UI] Response '{col_name}': invalid min value '{min_val}'")
                         pass
                 if max_val:
                     try:
                         constraint['max'] = float(max_val)
-                        print(f"[DEBUG UI] Response '{col_name}': max constraint = {constraint['max']}")
+                        self._debug_log(f"[DEBUG UI] Response '{col_name}': max constraint = {constraint['max']}")
                     except ValueError:
-                        print(f"[DEBUG UI] Response '{col_name}': invalid max value '{max_val}'")
+                        self._debug_log(f"[DEBUG UI] Response '{col_name}': invalid max value '{max_val}'")
                         pass
 
                 if constraint:
@@ -618,6 +626,9 @@ class AnalysisTab(ttk.Frame):
             messagebox.showwarning("Warning", "Please select a data file first.")
             return
 
+        # Clear debug log at start of new analysis
+        self.debug_log = []
+
         # Update selected responses to capture latest dropdown/constraint values
         self._update_selected_responses()
 
@@ -625,10 +636,10 @@ class AnalysisTab(ttk.Frame):
             messagebox.showwarning("Warning", "Please select at least one response variable.")
             return
 
-        print(f"\n[DEBUG ANALYZE] Starting analysis with:")
-        print(f"  - Selected responses: {self.selected_responses}")
-        print(f"  - Response directions: {self.response_directions}")
-        print(f"  - Response constraints: {self.response_constraints}")
+        self._debug_log(f"\n[DEBUG ANALYZE] Starting analysis with:")
+        self._debug_log(f"  - Selected responses: {self.selected_responses}")
+        self._debug_log(f"  - Response directions: {self.response_directions}")
+        self._debug_log(f"  - Response constraints: {self.response_constraints}")
 
         self.main_window.update_status("Analyzing...")
         self.update()
@@ -1197,10 +1208,10 @@ class AnalysisTab(ttk.Frame):
         # Get direction for this response (default to maximize for backward compatibility)
         response_direction = self.response_directions.get(self.handler.response_column, 'maximize')
 
-        print(f"[DEBUG BEST] Finding best experiment for '{self.handler.response_column}'")
-        print(f"  - Direction: {response_direction}")
-        print(f"  - Value range: {clean_data[self.handler.response_column].min()} to {clean_data[self.handler.response_column].max()}")
-        print(f"  - Constraints: {self.response_constraints.get(self.handler.response_column, 'None')}")
+        self._debug_log(f"[DEBUG BEST] Finding best experiment for '{self.handler.response_column}'")
+        self._debug_log(f"  - Direction: {response_direction}")
+        self._debug_log(f"  - Value range: {clean_data[self.handler.response_column].min()} to {clean_data[self.handler.response_column].max()}")
+        self._debug_log(f"  - Constraints: {self.response_constraints.get(self.handler.response_column, 'None')}")
 
         # Filter by constraints if any exist for this response
         filtered_data = clean_data.copy()
@@ -1223,7 +1234,7 @@ class AnalysisTab(ttk.Frame):
                 constraint_msg += f" <= {max_val}" if not constraint_msg else f" and <= {max_val}"
                 constraint_applied = True
 
-            print(f"  - After constraint filtering: {len(filtered_data)}/{original_count} experiments remain")
+            self._debug_log(f"  - After constraint filtering: {len(filtered_data)}/{original_count} experiments remain")
 
         self.recommendations_text.insert(tk.END, "="*80 + "\n")
         self.recommendations_text.insert(tk.END, "BEST OBSERVED EXPERIMENT\n")
@@ -1241,13 +1252,13 @@ class AnalysisTab(ttk.Frame):
         # Find best based on direction
         if response_direction == 'minimize':
             best_idx = filtered_data[self.handler.response_column].idxmin()
-            print(f"  - Using idxmin() for minimize")
+            self._debug_log(f"  - Using idxmin() for minimize")
         else:
             best_idx = filtered_data[self.handler.response_column].idxmax()
-            print(f"  - Using idxmax() for maximize")
+            self._debug_log(f"  - Using idxmax() for maximize")
 
         optimal_response = filtered_data.loc[best_idx, self.handler.response_column]
-        print(f"  - Best value: {optimal_response} at index {best_idx}")
+        self._debug_log(f"  - Best value: {optimal_response} at index {best_idx}")
 
         # Show ID if available
         direction_text = "lowest" if response_direction == 'minimize' else "highest"
@@ -1345,11 +1356,11 @@ class AnalysisTab(ttk.Frame):
                 # Initialize optimizer with current data (multi-response support)
                 exploration_mode = self.exploration_mode_var.get() if hasattr(self, 'exploration_mode_var') else False
 
-                print(f"[DEBUG ANALYSIS] Setting optimizer data:")
-                print(f"  - Response columns: {self.selected_responses}")
-                print(f"  - Response directions: {self.response_directions}")
-                print(f"  - Response constraints: {self.response_constraints}")
-                print(f"  - Exploration mode: {exploration_mode}")
+                self._debug_log(f"[DEBUG ANALYSIS] Setting optimizer data:")
+                self._debug_log(f"  - Response columns: {self.selected_responses}")
+                self._debug_log(f"  - Response directions: {self.response_directions}")
+                self._debug_log(f"  - Response constraints: {self.response_constraints}")
+                self._debug_log(f"  - Exploration mode: {exploration_mode}")
 
                 self.optimizer.set_data(
                     data=self.handler.clean_data,
@@ -1362,10 +1373,10 @@ class AnalysisTab(ttk.Frame):
                     exploration_mode=exploration_mode
                 )
 
-                print(f"[DEBUG ANALYSIS] After set_data:")
-                print(f"  - Optimizer.response_directions: {self.optimizer.response_directions}")
-                print(f"  - Optimizer.response_constraints: {self.optimizer.response_constraints}")
-                print(f"  - Optimizer.is_multi_objective: {self.optimizer.is_multi_objective}")
+                self._debug_log(f"[DEBUG ANALYSIS] After set_data:")
+                self._debug_log(f"  - Optimizer.response_directions: {self.optimizer.response_directions}")
+                self._debug_log(f"  - Optimizer.response_constraints: {self.optimizer.response_constraints}")
+                self._debug_log(f"  - Optimizer.is_multi_objective: {self.optimizer.is_multi_objective}")
 
                 self.optimizer.initialize_optimizer()
 
@@ -1405,8 +1416,8 @@ class AnalysisTab(ttk.Frame):
 
                 # Add Pareto frontier analysis for multi-objective
                 if self.optimizer.is_multi_objective:
-                    print(f"\n[DEBUG DISPLAY] Displaying Pareto frontier...")
-                    print(f"  response_directions at display time: {self.response_directions}")
+                    self._debug_log(f"\n[DEBUG DISPLAY] Displaying Pareto frontier...")
+                    self._debug_log(f"  response_directions at display time: {self.response_directions}")
 
                     pareto_points = self.optimizer.get_pareto_frontier()
                     if pareto_points and len(pareto_points) > 0:
@@ -1432,10 +1443,10 @@ class AnalysisTab(ttk.Frame):
                             self.recommendations_text.insert(tk.END, header + "\n")
 
                             if i == 1:  # Debug first point
-                                print(f"\n[DEBUG DISPLAY] First Pareto point:")
-                                print(f"  ID: {point.get('id')}")
-                                print(f"  Objectives: {point['objectives']}")
-                                print(f"  Checking directions for each objective:")
+                                self._debug_log(f"\n[DEBUG DISPLAY] First Pareto point:")
+                                self._debug_log(f"  ID: {point.get('id')}")
+                                self._debug_log(f"  Objectives: {point['objectives']}")
+                                self._debug_log(f"  Checking directions for each objective:")
 
                             # Display experimental conditions
                             if point.get('parameters'):
@@ -1451,7 +1462,7 @@ class AnalysisTab(ttk.Frame):
                             for resp, value in point['objectives'].items():
                                 direction = self.response_directions.get(resp, 'maximize')
                                 if i == 1:  # Debug first point
-                                    print(f"    {resp}: direction={direction}")
+                                    self._debug_log(f"    {resp}: direction={direction}")
                                 arrow = '↑' if direction == 'maximize' else '↓'
                                 direction_text = '(maximize)' if direction == 'maximize' else '(minimize)'
                                 self.recommendations_text.insert(tk.END, f"    {arrow} {resp:<25}: {value:.4f} {direction_text}\n")
@@ -1492,8 +1503,16 @@ class AnalysisTab(ttk.Frame):
                 # Disable export button if BO failed
                 if hasattr(self, 'export_bo_button'):
                     self.export_bo_button.config(state='disabled')
-            
+
             self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
+
+        # Display collected debug log at the end
+        if self.debug_log:
+            self.recommendations_text.insert(tk.END, "\nDEBUG LOG\n")
+            self.recommendations_text.insert(tk.END, "="*80 + "\n")
+            for log_entry in self.debug_log:
+                self.recommendations_text.insert(tk.END, log_entry + "\n")
+            self.recommendations_text.insert(tk.END, "="*80 + "\n")
 
     def _create_optimization_export_button(self):
         """Create appropriate export button based on optimization type"""
