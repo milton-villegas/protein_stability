@@ -206,28 +206,33 @@ class BayesianOptimizer:
             print(f"[DEBUG INIT] Applying response constraints to Ax:")
             for response, constraint in self.response_constraints.items():
                 print(f"  Processing constraint for '{response}': {constraint}")
-                if 'min' in constraint:
-                    min_val = constraint['min']
-                    outcome_constraints.append(
-                        OutcomeConstraint(
+                try:
+                    if 'min' in constraint:
+                        min_val = constraint['min']
+                        print(f"    Creating OutcomeConstraint: {response} >= {min_val}")
+                        oc = OutcomeConstraint(
                             metric_name=response,
                             op=ComparisonOp.GEQ,
                             bound=min_val,
                             relative=False
                         )
-                    )
-                    print(f"    ✓ Added: {response} ≥ {min_val}")
-                if 'max' in constraint:
-                    max_val = constraint['max']
-                    outcome_constraints.append(
-                        OutcomeConstraint(
+                        outcome_constraints.append(oc)
+                        print(f"    ✓ Added: {response} ≥ {min_val}")
+                    if 'max' in constraint:
+                        max_val = constraint['max']
+                        print(f"    Creating OutcomeConstraint: {response} <= {max_val}")
+                        oc = OutcomeConstraint(
                             metric_name=response,
                             op=ComparisonOp.LEQ,
                             bound=max_val,
                             relative=False
                         )
-                    )
-                    print(f"    ✓ Added: {response} ≤ {max_val}")
+                        outcome_constraints.append(oc)
+                        print(f"    ✓ Added: {response} ≤ {max_val}")
+                except Exception as e:
+                    print(f"    ❌ ERROR creating constraint: {e}")
+                    import traceback
+                    traceback.print_exc()
             print(f"[DEBUG INIT] Total constraints added to Ax: {len(outcome_constraints)}")
         elif self.response_constraints and self.exploration_mode:
             print(f"[DEBUG INIT] Exploration mode enabled - constraints tracked but NOT enforced:")
@@ -243,14 +248,26 @@ class BayesianOptimizer:
             print(f"[DEBUG INIT] No constraints to apply")
 
         # Create Ax client
+        print(f"\n[DEBUG INIT] Creating Ax experiment...")
+        print(f"  Parameters: {len(parameters)} defined")
+        print(f"  Objectives: {list(objectives.keys())}")
+        print(f"  Outcome constraints: {len(outcome_constraints)} defined")
+
         self.ax_client = AxClient()
-        self.ax_client.create_experiment(
-            name="doe_optimization",
-            parameters=parameters,
-            objectives=objectives,
-            outcome_constraints=outcome_constraints if outcome_constraints else None,
-            choose_generation_strategy_kwargs={"num_initialization_trials": 0}
-        )
+        try:
+            self.ax_client.create_experiment(
+                name="doe_optimization",
+                parameters=parameters,
+                objectives=objectives,
+                outcome_constraints=outcome_constraints if outcome_constraints else None,
+                choose_generation_strategy_kwargs={"num_initialization_trials": 0}
+            )
+            print(f"[DEBUG INIT] ✓ Ax experiment created successfully")
+        except Exception as e:
+            print(f"[DEBUG INIT] ❌ ERROR creating Ax experiment: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
         
         # Add existing data as completed trials using sanitized names
         print(f"\n[DEBUG INIT] Adding {len(self.data)} existing trials to Ax...")
