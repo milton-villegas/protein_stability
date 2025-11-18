@@ -750,6 +750,7 @@ class BayesianOptimizer:
                 Z_sem = np.zeros_like(X)
 
                 idx = 0
+                non_zero_count = 0
                 for i in range(X.shape[0]):
                     for j in range(X.shape[1]):
                         pred = predictions_list[idx]
@@ -768,15 +769,26 @@ class BayesianOptimizer:
 
                             if idx == 0:  # Debug first values
                                 print(f"DEBUG: mean={pred_mean}, variance={variance}, sem={pred_sem}")
+                                print(f"DEBUG: Setting Z_sem[{i}, {j}] = {pred_sem}")
+
+                            if pred_sem > 0:
+                                non_zero_count += 1
                         else:
                             raise ValueError(f"Unexpected format: {type(pred)}")
 
                         Z_mean[i, j] = pred_mean
                         Z_sem[i, j] = pred_sem
+
+                        if idx == 0:
+                            print(f"DEBUG: After assignment, Z_sem[{i}, {j}] = {Z_sem[i, j]}")
+
                         idx += 1
 
                 print(f"✓ Predicted {len(parameterizations)} points")
-                print(f"DEBUG: Z_sem stats - min={Z_sem.min()}, max={Z_sem.max()}, mean={Z_sem.mean()}")
+                print(f"DEBUG: Loop completed, processed {idx} predictions")
+                print(f"DEBUG: Non-zero SEM count: {non_zero_count}")
+                print(f"DEBUG: Z_sem shape: {Z_sem.shape}")
+                print(f"DEBUG: Z_sem stats BEFORE plot - min={Z_sem.min()}, max={Z_sem.max()}, mean={Z_sem.mean()}")
 
             except Exception as e:
                 print(f"\n{'='*60}")
