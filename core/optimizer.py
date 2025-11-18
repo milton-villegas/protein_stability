@@ -14,6 +14,8 @@ from datetime import datetime
 # Check if Ax is available
 try:
     from ax.service.ax_client import AxClient, ObjectiveProperties
+    from ax.core.outcome_constraint import OutcomeConstraint
+    from ax.core.types import ComparisonOp
     AX_AVAILABLE = True
 except ImportError:
     AX_AVAILABLE = False
@@ -38,6 +40,8 @@ class BayesianOptimizer:
         self.response_column = None  # Backward compatibility (primary response)
         self.response_columns = []  # Multi-response support
         self.response_directions = {}  # {response_name: 'maximize' or 'minimize'}
+        self.response_constraints = {}  # {response_name: {'min': val, 'max': val}}
+        self.exploration_mode = False  # Allow suggestions outside constraints
         self.factor_bounds = {}
         self.is_initialized = False
         self.is_multi_objective = False  # Track if using multi-objective optimization
@@ -50,13 +54,16 @@ class BayesianOptimizer:
         return sanitized
     
     def set_data(self, data, factor_columns, categorical_factors, numeric_factors,
-                 response_column=None, response_columns=None, response_directions=None):
+                 response_column=None, response_columns=None, response_directions=None,
+                 response_constraints=None, exploration_mode=False):
         """Set data and factor information
 
         Args:
             response_column: Single response (backward compatibility)
             response_columns: List of response columns (multi-objective)
             response_directions: Dict of {response_name: 'maximize' or 'minimize'}
+            response_constraints: Dict of {response_name: {'min': val, 'max': val}}
+            exploration_mode: Allow suggestions outside constraints for exploration
         """
         self.data = data.copy()
         self.factor_columns = factor_columns
@@ -79,6 +86,12 @@ class BayesianOptimizer:
         for resp in self.response_columns:
             if resp not in self.response_directions:
                 self.response_directions[resp] = 'maximize'
+
+        # Store response constraints
+        self.response_constraints = response_constraints or {}
+
+        # Store exploration mode
+        self.exploration_mode = exploration_mode
 
         # Multi-objective if more than one response
         self.is_multi_objective = len(self.response_columns) > 1
@@ -167,13 +180,52 @@ class BayesianOptimizer:
             # Single-objective (backward compatible)
             objectives[self.response_column] = ObjectiveProperties(minimize=minimize)
 
+        # Build outcome constraints from response_constraints
+        outcome_constraints = []
+        if self.response_constraints and not self.exploration_mode:
+            print(f"ℹ️  Applying response constraints:")
+            for response, constraint in self.response_constraints.items():
+                if 'min' in constraint:
+                    min_val = constraint['min']
+                    outcome_constraints.append(
+                        OutcomeConstraint(
+                            metric_name=response,
+                            op=ComparisonOp.GEQ,
+                            bound=min_val,
+                            relative=False
+                        )
+                    )
+                    print(f"     {response} ≥ {min_val}")
+                if 'max' in constraint:
+                    max_val = constraint['max']
+                    outcome_constraints.append(
+                        OutcomeConstraint(
+                            metric_name=response,
+                            op=ComparisonOp.LEQ,
+                            bound=max_val,
+                            relative=False
+                        )
+                    )
+                    print(f"     {response} ≤ {max_val}")
+        elif self.response_constraints and self.exploration_mode:
+            print(f"ℹ️  Exploration mode enabled - constraints will be tracked but not enforced:")
+            for response, constraint in self.response_constraints.items():
+                parts = []
+                if 'min' in constraint:
+                    parts.append(f"{response} ≥ {constraint['min']}")
+                if 'max' in constraint:
+                    parts.append(f"{response} ≤ {constraint['max']}")
+                if parts:
+                    print(f"     {' and '.join(parts)} (guidance only)")
+
         # Create Ax client
         self.ax_client = AxClient()
         self.ax_client.create_experiment(
             name="doe_optimization",
             parameters=parameters,
             objectives=objectives,
-            choose_generation_strategy_kwargs={"num_initialization_trials": 0}  # Skip Sobol, go straight to BO
+            outcome_constraints=outcome_constraints if outcome_constraints else None,
+            choose_generation_strategy_kwargs={"num_initialization_trials": 0}
         )
         
         # Add existing data as completed trials using sanitized names
@@ -208,7 +260,33 @@ class BayesianOptimizer:
 
         self.is_initialized = True
         print(f"✓ Initialized BO with {len(self.data)} existing trials")
-    
+
+    def check_constraint_violations(self, predicted_values):
+        """Check if predicted response values violate constraints
+
+        Args:
+            predicted_values: Dict of {response_name: value}
+
+        Returns:
+            List of constraint violation messages
+        """
+        violations = []
+        if not self.response_constraints:
+            return violations
+
+        for response, constraint in self.response_constraints.items():
+            if response not in predicted_values:
+                continue
+
+            value = predicted_values[response]
+
+            if 'min' in constraint and value < constraint['min']:
+                violations.append(f"{response} = {value:.2f} < {constraint['min']} (min)")
+            if 'max' in constraint and value > constraint['max']:
+                violations.append(f"{response} = {value:.2f} > {constraint['max']} (max)")
+
+        return violations
+
     def get_next_suggestions(self, n=5):
         """Get next experiment suggestions with original factor names and proper rounding"""
         if not self.is_initialized:
@@ -352,11 +430,30 @@ class BayesianOptimizer:
             ax.scatter(all_r1, all_r2, c='lightgray', s=100, alpha=0.5,
                       label='Observed', zorder=1, edgecolors='gray', linewidths=0.5)
 
-            # Plot Pareto frontier points
-            pareto_r1 = [p['objectives'][resp1] for p in pareto_points]
-            pareto_r2 = [p['objectives'][resp2] for p in pareto_points]
-            ax.scatter(pareto_r1, pareto_r2, c=self.COLORS['primary'], s=200,
-                      label='Pareto Frontier', zorder=2, marker='*', edgecolors='black', linewidths=1.5)
+            # Separate Pareto points by constraint violations
+            valid_r1, valid_r2 = [], []
+            violated_r1, violated_r2 = [], []
+
+            for p in pareto_points:
+                violations = self.check_constraint_violations(p['objectives'])
+                if violations:
+                    violated_r1.append(p['objectives'][resp1])
+                    violated_r2.append(p['objectives'][resp2])
+                else:
+                    valid_r1.append(p['objectives'][resp1])
+                    valid_r2.append(p['objectives'][resp2])
+
+            # Plot valid Pareto points (meets constraints)
+            if valid_r1:
+                ax.scatter(valid_r1, valid_r2, c=self.COLORS['primary'], s=200,
+                          label='Pareto Frontier (meets constraints)', zorder=2, marker='*',
+                          edgecolors='black', linewidths=1.5)
+
+            # Plot violated Pareto points (violates constraints)
+            if violated_r1:
+                ax.scatter(violated_r1, violated_r2, c=self.COLORS['warning'], s=200,
+                          label='Pareto Frontier (violates constraints)', zorder=2, marker='*',
+                          edgecolors='darkred', linewidths=1.5)
 
             # Add arrows showing optimization direction
             dir1 = self.response_directions[resp1]
@@ -389,12 +486,32 @@ class BayesianOptimizer:
             ax.scatter(all_r1, all_r2, all_r3, c='lightgray', s=80, alpha=0.4,
                       label='Observed', edgecolors='gray', linewidths=0.5)
 
-            # Plot Pareto frontier points
-            pareto_r1 = [p['objectives'][resp1] for p in pareto_points]
-            pareto_r2 = [p['objectives'][resp2] for p in pareto_points]
-            pareto_r3 = [p['objectives'][resp3] for p in pareto_points]
-            ax.scatter(pareto_r1, pareto_r2, pareto_r3, c=self.COLORS['primary'], s=250,
-                      label='Pareto Frontier', marker='*', edgecolors='black', linewidths=1.5)
+            # Separate Pareto points by constraint violations
+            valid_r1, valid_r2, valid_r3 = [], [], []
+            violated_r1, violated_r2, violated_r3 = [], [], []
+
+            for p in pareto_points:
+                violations = self.check_constraint_violations(p['objectives'])
+                if violations:
+                    violated_r1.append(p['objectives'][resp1])
+                    violated_r2.append(p['objectives'][resp2])
+                    violated_r3.append(p['objectives'][resp3])
+                else:
+                    valid_r1.append(p['objectives'][resp1])
+                    valid_r2.append(p['objectives'][resp2])
+                    valid_r3.append(p['objectives'][resp3])
+
+            # Plot valid Pareto points (meets constraints)
+            if valid_r1:
+                ax.scatter(valid_r1, valid_r2, valid_r3, c=self.COLORS['primary'], s=250,
+                          label='Pareto (meets constraints)', marker='*',
+                          edgecolors='black', linewidths=1.5)
+
+            # Plot violated Pareto points (violates constraints)
+            if violated_r1:
+                ax.scatter(violated_r1, violated_r2, violated_r3, c=self.COLORS['warning'], s=250,
+                          label='Pareto (violates constraints)', marker='*',
+                          edgecolors='darkred', linewidths=1.5)
 
             # Labels
             dir1 = self.response_directions[resp1]

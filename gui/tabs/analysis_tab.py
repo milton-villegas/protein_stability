@@ -149,12 +149,6 @@ class AnalysisTab(ttk.Frame):
                                       command=self.analyze_data, state='disabled')
         self.analyze_btn.grid(row=0, column=3, padx=20, pady=5)
 
-        # Status bar
-        self.status_var = tk.StringVar(value="Ready")
-        status_bar = ttk.Label(self, textvariable=self.status_var,
-                              relief=tk.SUNKEN, anchor='w')
-        status_bar.pack(fill='x', side='bottom')
-
     def create_results_tab(self):
         """Create the Results tab with results notebook and export buttons"""
         # Get the parent notebook from main_window
@@ -168,11 +162,11 @@ class AnalysisTab(ttk.Frame):
         export_frame = ttk.LabelFrame(results_tab, text="Export Results", padding=10)
         export_frame.pack(fill='x', padx=10, pady=5)
 
-        self.export_stats_btn = ttk.Button(export_frame, text="Export Statistics (.xlxs)",
+        self.export_stats_btn = ttk.Button(export_frame, text="Export Statistics",
                                           command=self.export_statistics, state='disabled')
         self.export_stats_btn.pack(side='left', padx=5)
 
-        self.export_plots_btn = ttk.Button(export_frame, text="Export Plots (.png)",
+        self.export_plots_btn = ttk.Button(export_frame, text="Export Plots",
                                           command=self.export_plots, state='disabled')
         self.export_plots_btn.pack(side='left', padx=5)
 
@@ -187,10 +181,16 @@ class AnalysisTab(ttk.Frame):
         self.notebook.pack(fill='both', expand=True)
 
         # Tab 1: Statistics
-        self.stats_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.stats_frame, text="Statistics")
+        stats_container = ttk.Frame(self.notebook)
+        self.notebook.add(stats_container, text="Statistics")
 
-        self.stats_text = scrolledtext.ScrolledText(self.stats_frame, wrap=tk.WORD, font=('Courier', 14))
+        stats_header = ttk.Frame(stats_container)
+        stats_header.pack(fill='x', padx=5, pady=2)
+        ttk.Label(stats_header, text="Statistical Analysis Results", font=('TkDefaultFont', 10, 'bold')).pack(side='left')
+        ttk.Button(stats_header, text="ℹ️", width=3,
+                  command=lambda: self.show_tooltip("statistics")).pack(side='right', padx=5)
+
+        self.stats_text = scrolledtext.ScrolledText(stats_container, wrap=tk.WORD, font=('Courier', 14))
         self.stats_text.pack(fill='both', expand=True, padx=5, pady=5)
 
         # Tab 2: Main Effects
@@ -200,7 +200,7 @@ class AnalysisTab(ttk.Frame):
         me_header = ttk.Frame(main_effects_container)
         me_header.pack(fill='x', padx=5, pady=2)
         ttk.Label(me_header, text="Main Effects Plot", font=('TkDefaultFont', 10, 'bold')).pack(side='left')
-        ttk.Button(me_header, text="ℹ️ How to Read", width=15,
+        ttk.Button(me_header, text="ℹ️", width=3,
                   command=lambda: self.show_tooltip("main_effects")).pack(side='right', padx=5)
 
         self.main_effects_frame = self.create_scrollable_frame(main_effects_container)
@@ -212,7 +212,7 @@ class AnalysisTab(ttk.Frame):
         int_header = ttk.Frame(interactions_container)
         int_header.pack(fill='x', padx=5, pady=2)
         ttk.Label(int_header, text="Interaction Effects Plot", font=('TkDefaultFont', 10, 'bold')).pack(side='left')
-        ttk.Button(int_header, text="ℹ️ How to Read", width=15,
+        ttk.Button(int_header, text="ℹ️", width=3,
                   command=lambda: self.show_tooltip("interactions")).pack(side='right', padx=5)
 
         self.interactions_frame = self.create_scrollable_frame(interactions_container)
@@ -224,27 +224,33 @@ class AnalysisTab(ttk.Frame):
         res_header = ttk.Frame(residuals_container)
         res_header.pack(fill='x', padx=5, pady=2)
         ttk.Label(res_header, text="Residuals Diagnostic Plot", font=('TkDefaultFont', 10, 'bold')).pack(side='left')
-        ttk.Button(res_header, text="ℹ️ How to Read", width=15,
+        ttk.Button(res_header, text="ℹ️", width=3,
                   command=lambda: self.show_tooltip("residuals")).pack(side='right', padx=5)
 
         self.residuals_frame = self.create_scrollable_frame(residuals_container)
 
         # Tab 5: Recommendations
-        self.recommendations_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.recommendations_frame, text="Recommendations")
+        recommendations_container = ttk.Frame(self.notebook)
+        self.notebook.add(recommendations_container, text="Recommendations")
+
+        rec_header = ttk.Frame(recommendations_container)
+        rec_header.pack(fill='x', padx=5, pady=2)
+        ttk.Label(rec_header, text="Next Experiments", font=('TkDefaultFont', 10, 'bold')).pack(side='left')
+        ttk.Button(rec_header, text="ℹ️", width=3,
+                  command=lambda: self.show_tooltip("recommendations")).pack(side='right', padx=5)
 
         if AX_AVAILABLE:
-            button_frame = ttk.Frame(self.recommendations_frame)
-            button_frame.pack(fill='x', padx=5, pady=5)
+            export_frame_rec = ttk.LabelFrame(recommendations_container, text="Export", padding=10)
+            export_frame_rec.pack(fill='x', padx=10, pady=5)
 
-            self.export_bo_button = ttk.Button(button_frame, text="📤 Export BO Batch to Files",
+            self.export_bo_button = ttk.Button(export_frame_rec, text="📤 Export BO Batch",
                                               command=self.export_bo_batch, state='disabled')
             self.export_bo_button.pack(side='left', padx=5)
 
-            ttk.Label(button_frame, text="(Available after analysis with BO suggestions)",
+            ttk.Label(export_frame_rec, text="(Available after analysis with BO suggestions)",
                      font=('TkDefaultFont', 9)).pack(side='left', padx=5)
 
-        self.recommendations_text = scrolledtext.ScrolledText(self.recommendations_frame,
+        self.recommendations_text = scrolledtext.ScrolledText(recommendations_container,
                                                              wrap=tk.WORD, font=('Courier', 14))
         self.recommendations_text.pack(fill='both', expand=True, padx=5, pady=5)
 
@@ -255,15 +261,12 @@ class AnalysisTab(ttk.Frame):
 
             opt_header = ttk.Frame(optimization_container)
             opt_header.pack(fill='x', padx=5, pady=2)
-            ttk.Label(opt_header, text="Bayesian Optimization Analysis",
-                     font=('TkDefaultFont', 10, 'bold')).pack(side='left')
-
-            self.export_bo_plots_button = ttk.Button(opt_header, text="📊 Export BO Plots",
-                                                     command=self.export_bo_plots_gui, state='disabled')
-            self.export_bo_plots_button.pack(side='right', padx=5)
-
-            ttk.Button(opt_header, text="ℹ️ How to Read", width=15,
+            ttk.Label(opt_header, text="Bayesian Optimization Analysis", font=('TkDefaultFont', 10, 'bold')).pack(side='left')
+            ttk.Button(opt_header, text="ℹ️", width=3,
                       command=lambda: self.show_tooltip("optimization")).pack(side='right', padx=5)
+
+            self.export_frame_opt = ttk.LabelFrame(optimization_container, text="Export", padding=10)
+            self.export_frame_opt.pack(fill='x', padx=10, pady=5)
 
             self.optimization_frame = self.create_scrollable_frame(optimization_container)
     
@@ -359,6 +362,17 @@ class AnalysisTab(ttk.Frame):
     def show_tooltip(self, plot_type):
         """Show interpretation guidance for different plot types"""
         tooltips = {
+            "statistics": (
+                "How to Read Statistical Analysis Results\n\n"
+                "• R-squared (R²) = How well the model fits (0-1, higher is better)\n"
+                "• p-value < 0.05 = Factor is statistically significant\n"
+                "• Coefficient = Effect size and direction (+ or -)\n"
+                "• Adjusted R² = R² adjusted for number of factors\n\n"
+                "Look for:\n"
+                "• High R² (>0.7) indicates good model fit\n"
+                "• Significant factors (p < 0.05) with asterisks ***\n"
+                "• Large absolute coefficients = stronger effects"
+            ),
             "main_effects": (
                 "How to Read Main Effects Plot\n\n"
                 "• Steeper slopes = Stronger factor influence on response\n"
@@ -386,6 +400,18 @@ class AnalysisTab(ttk.Frame):
                 "If residuals look bad, your statistical conclusions may be unreliable.\n"
                 "Consider trying a different model type or checking for data errors."
             ),
+            "recommendations": (
+                "How to Read Next Experiments\n\n"
+                "Bayesian Optimization (BO) suggests intelligent next experiments:\n\n"
+                "• Suggestions are ranked by expected improvement\n"
+                "• BO balances exploration (new regions) vs exploitation (promising regions)\n"
+                "• Each suggestion shows predicted factor values\n"
+                "• Run suggested experiments to improve your response\n\n"
+                "Tips:\n"
+                "• Start with top 3-5 suggestions\n"
+                "• Add results back to dataset and re-analyze\n"
+                "• BO gets smarter with each iteration"
+            ),
             "optimization": (
                 "How to Read Optimization Details\n\n"
                 "This plot shows where Bayesian Optimization predicts you should explore:\n\n"
@@ -397,7 +423,7 @@ class AnalysisTab(ttk.Frame):
                 "that balance exploring new areas with exploiting promising regions."
             )
         }
-        
+
         messagebox.showinfo("Plot Interpretation Guide", tooltips.get(plot_type, "No guide available"))
     
     def show_model_guide(self):
@@ -435,9 +461,8 @@ class AnalysisTab(ttk.Frame):
         
         if filepath:
             self.filepath = filepath
-            # Keep label white/colored when file selected
             self.file_label.config(text=os.path.basename(filepath))
-            self.status_var.set(f"Loaded: {os.path.basename(filepath)}")
+            self.main_window.update_status(f"Loaded: {os.path.basename(filepath)}")
             
             try:
                 self.handler.load_excel(filepath)
@@ -450,20 +475,19 @@ class AnalysisTab(ttk.Frame):
                                        "Excel file must have at least one numeric column\n"
                                        "that can be used as a response variable.\n\n"
                                        "Numeric columns are needed for optimization.")
-                    self.status_var.set("Error: No numeric columns found")
+                    self.main_window.update_status("Error: No numeric columns found")
                     return
 
-                # Populate response selection UI
                 self._populate_response_selection(potential_responses)
 
-                self.status_var.set(f"Loaded: {len(potential_responses)} potential response(s) found")
+                self.main_window.update_status(f"Loaded: {len(potential_responses)} potential response(s) found")
 
             except Exception as e:
                 messagebox.showerror("File Load Failed",
                     f"Could not open the selected Excel file.\n\n"
                     f"Details: {str(e)}\n\n"
                     f"Make sure the file is not open in another program.")
-                self.status_var.set("Error loading file")
+                self.main_window.update_status("Error loading file")
 
     def _populate_response_selection(self, potential_responses):
         """Create checkboxes for response selection with maximize/minimize options"""
@@ -475,12 +499,17 @@ class AnalysisTab(ttk.Frame):
         self.response_checkboxes = {}
         self.selected_responses = []
         self.response_directions = {}
+        self.response_constraints = {}
 
         # Header
         header_label = ttk.Label(self.response_frame,
                                 text="Select response variable(s) to optimize:",
                                 font=('TkDefaultFont', 9, 'bold'))
-        header_label.grid(row=0, column=0, columnspan=3, sticky='w', padx=5, pady=5)
+        header_label.grid(row=0, column=0, columnspan=5, sticky='w', padx=5, pady=5)
+
+        # Column headers
+        ttk.Label(self.response_frame, text="Constraint Min", font=('TkDefaultFont', 8)).grid(row=0, column=2, padx=5)
+        ttk.Label(self.response_frame, text="Constraint Max", font=('TkDefaultFont', 8)).grid(row=0, column=3, padx=5)
 
         # Create checkbox for each potential response
         for idx, col_name in enumerate(potential_responses):
@@ -502,15 +531,35 @@ class AnalysisTab(ttk.Frame):
                                           state='readonly', width=10)
             direction_combo.grid(row=idx+1, column=1, padx=10, pady=2)
 
+            # Min constraint entry
+            min_var = tk.StringVar(value='')
+            min_entry = ttk.Entry(self.response_frame, textvariable=min_var, width=10)
+            min_entry.grid(row=idx+1, column=2, padx=5, pady=2)
+
+            # Max constraint entry
+            max_var = tk.StringVar(value='')
+            max_entry = ttk.Entry(self.response_frame, textvariable=max_var, width=10)
+            max_entry.grid(row=idx+1, column=3, padx=5, pady=2)
+
             # Store references
-            self.response_checkboxes[col_name] = (var, direction_var)
+            self.response_checkboxes[col_name] = (var, direction_var, min_var, max_var)
 
         # Note label
         note_label = ttk.Label(self.response_frame,
-                              text="Note: At least one response must be selected to proceed",
+                              text="Note: Constraints are optional. Leave blank for no constraint.",
                               font=('TkDefaultFont', 8, 'italic'))
-        note_label.grid(row=len(potential_responses)+1, column=0, columnspan=3,
+        note_label.grid(row=len(potential_responses)+1, column=0, columnspan=5,
                        sticky='w', padx=5, pady=5)
+
+        # Exploration mode checkbox
+        self.exploration_mode_var = tk.BooleanVar(value=False)
+        exploration_cb = ttk.Checkbutton(
+            self.response_frame,
+            text="Allow exploration outside bounds (20% of suggestions may violate constraints)",
+            variable=self.exploration_mode_var
+        )
+        exploration_cb.grid(row=len(potential_responses)+2, column=0, columnspan=5,
+                           sticky='w', padx=20, pady=5)
 
         # Initial update
         self._update_selected_responses()
@@ -519,20 +568,38 @@ class AnalysisTab(ttk.Frame):
         """Update selected responses list and enable/disable analyze button"""
         self.selected_responses = []
         self.response_directions = {}
+        self.response_constraints = {}
 
-        for col_name, (var, direction_var) in self.response_checkboxes.items():
+        for col_name, (var, direction_var, min_var, max_var) in self.response_checkboxes.items():
             if var.get():
                 self.selected_responses.append(col_name)
                 direction = 'minimize' if direction_var.get() == 'Minimize' else 'maximize'
                 self.response_directions[col_name] = direction
 
-        # Enable analyze button only if at least one response selected
+                min_val = min_var.get().strip()
+                max_val = max_var.get().strip()
+
+                constraint = {}
+                if min_val:
+                    try:
+                        constraint['min'] = float(min_val)
+                    except ValueError:
+                        pass
+                if max_val:
+                    try:
+                        constraint['max'] = float(max_val)
+                    except ValueError:
+                        pass
+
+                if constraint:
+                    self.response_constraints[col_name] = constraint
+
         if self.selected_responses:
             self.analyze_btn.config(state='normal')
-            self.status_var.set(f"Ready to analyze {len(self.selected_responses)} response(s)")
+            self.main_window.update_status(f"Ready to analyze {len(self.selected_responses)} response(s)")
         else:
             self.analyze_btn.config(state='disabled')
-            self.status_var.set("Please select at least one response variable")
+            self.main_window.update_status("Please select at least one response variable")
 
     def analyze_data(self):
         """Perform DoE analysis"""
@@ -544,7 +611,7 @@ class AnalysisTab(ttk.Frame):
             messagebox.showwarning("Warning", "Please select at least one response variable.")
             return
 
-        self.status_var.set("Analyzing...")
+        self.main_window.update_status("Analyzing...")
         self.update()
 
         try:
@@ -576,9 +643,8 @@ class AnalysisTab(ttk.Frame):
 
             selected_model = model_mapping[selected_option]
 
-            # Multi-response analysis: analyze each response separately
             if len(self.selected_responses) > 1:
-                self.status_var.set(f"Analyzing {len(self.selected_responses)} responses...")
+                self.main_window.update_status(f"Analyzing {len(self.selected_responses)} responses...")
                 self.update()
 
                 # Compare all models for all responses (this fits all models)
@@ -613,8 +679,7 @@ class AnalysisTab(ttk.Frame):
                         }
                         self.chosen_models[response_name] = chosen
 
-                    # Re-fit the chosen model for detailed analysis (same as single-response flow)
-                    self.status_var.set(f"Fitting {response_name} with {chosen} model...")
+                    self.main_window.update_status(f"Fitting {response_name} with {chosen} model...")
                     self.update()
 
                     self.all_results[response_name] = self.analyzer.fit_model(chosen, response_name=response_name)
@@ -630,8 +695,7 @@ class AnalysisTab(ttk.Frame):
                 mode_description = "Auto-selected" if selected_model is None else "User selected"
 
             else:
-                # Single response analysis (backward compatible)
-                self.status_var.set("Comparing all models...")
+                self.main_window.update_status("Comparing all models...")
                 self.update()
 
                 self.model_comparison = self.analyzer.compare_all_models()
@@ -652,7 +716,7 @@ class AnalysisTab(ttk.Frame):
                     self.model_selection = {'recommended_model': chosen_model, 'reason': 'User selected'}
                     mode_description = "User selected"
 
-                self.status_var.set(f"Using {mode_description.lower()} model: {chosen_model}...")
+                self.main_window.update_status(f"Using {mode_description.lower()} model: {chosen_model}...")
                 self.update()
 
                 # Fit the chosen model for detailed analysis
@@ -674,9 +738,8 @@ class AnalysisTab(ttk.Frame):
             chosen_model_name = self.analyzer.MODEL_TYPES[chosen_model]
 
             if len(self.selected_responses) > 1:
-                # Multi-response completion message
                 avg_r2 = sum(r['model_stats']['R-squared'] for r in self.all_results.values()) / len(self.all_results)
-                self.status_var.set(f"Analysis complete! {len(self.selected_responses)} responses analyzed | Avg R² = {avg_r2:.4f}")
+                self.main_window.update_status(f"Analysis complete! {len(self.selected_responses)} responses analyzed | Avg R² = {avg_r2:.4f}")
 
                 messagebox.showinfo("Success",
                                   f"Multi-response analysis completed successfully!\n\n"
@@ -685,8 +748,7 @@ class AnalysisTab(ttk.Frame):
                                   f"Observations: {self.results['model_stats']['Observations']}\n\n"
                                   f"Check the Results tab for detailed analysis of each response.")
             else:
-                # Single response completion message
-                self.status_var.set(f"Analysis complete! Model: {chosen_model_name} | R² = {self.results['model_stats']['R-squared']:.4f}")
+                self.main_window.update_status(f"Analysis complete! Model: {chosen_model_name} | R² = {self.results['model_stats']['R-squared']:.4f}")
 
                 messagebox.showinfo("Success",
                                   f"Analysis completed successfully!\n\n"
@@ -712,7 +774,7 @@ class AnalysisTab(ttk.Frame):
                 f"Statistical analysis could not be completed.\n\n"
                 f"Error: {str(e)}\n\n"
                 f"Check that your data includes all required columns and valid numeric values.")
-            self.status_var.set("Analysis failed")
+            self.main_window.update_status("Analysis failed")
     
     def _display_single_response_statistics(self, results, model_comparison, model_selection, response_name):
         """Display statistics for a single response (helper for multi-response display)"""
@@ -1196,20 +1258,45 @@ class AnalysisTab(ttk.Frame):
             self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
             self.recommendations_text.insert(tk.END, "BAYESIAN OPTIMIZATION SUGGESTIONS\n")
             self.recommendations_text.insert(tk.END, "="*80 + "\n")
-            self.recommendations_text.insert(tk.END, "Intelligently suggested next experiments (balancing exploration & exploitation):\n\n")
-            
+
             try:
                 # Initialize optimizer with current data (multi-response support)
+                exploration_mode = self.exploration_mode_var.get() if hasattr(self, 'exploration_mode_var') else False
+
                 self.optimizer.set_data(
                     data=self.handler.clean_data,
                     factor_columns=self.handler.factor_columns,
                     categorical_factors=self.handler.categorical_factors,
                     numeric_factors=self.handler.numeric_factors,
-                    response_columns=self.selected_responses,  # Pass all selected responses
-                    response_directions=self.response_directions  # Pass optimization directions
+                    response_columns=self.selected_responses,
+                    response_directions=self.response_directions,
+                    response_constraints=self.response_constraints,
+                    exploration_mode=exploration_mode
                 )
-                self.optimizer.initialize_optimizer()  # Uses response_directions internally
-                
+                self.optimizer.initialize_optimizer()
+
+                # Show constraint information
+                if self.response_constraints:
+                    self.recommendations_text.insert(tk.END, "\nActive Constraints:\n")
+                    for response, constraint in self.response_constraints.items():
+                        parts = []
+                        if 'min' in constraint:
+                            parts.append(f"{constraint['min']} ≤ {response}")
+                        if 'max' in constraint:
+                            parts.append(f"{response} ≤ {constraint['max']}")
+                        if parts:
+                            self.recommendations_text.insert(tk.END, f"  • {' and '.join(parts)}\n")
+
+                    if exploration_mode:
+                        self.recommendations_text.insert(tk.END, "\n⚠️  Exploration Mode: ON\n")
+                        self.recommendations_text.insert(tk.END, "   Some suggestions may violate constraints to discover unexpected solutions.\n\n")
+                    else:
+                        self.recommendations_text.insert(tk.END, "\n✓ All suggestions will respect these constraints.\n\n")
+                else:
+                    self.recommendations_text.insert(tk.END, "\nNo constraints applied.\n\n")
+
+                self.recommendations_text.insert(tk.END, "\nIntelligently suggested next experiments (balancing exploration & exploitation):\n\n")
+
                 # Get suggestions
                 suggestions = self.optimizer.get_next_suggestions(n=5)
                 
@@ -1235,12 +1322,21 @@ class AnalysisTab(ttk.Frame):
 
                         # Show first 5 Pareto points
                         for i, point in enumerate(pareto_points[:5], 1):
-                            self.recommendations_text.insert(tk.END, f"Pareto Point #{i}:\n")
+                            violations = self.optimizer.check_constraint_violations(point['objectives'])
+
+                            status = "✓" if not violations else "⚠️"
+                            self.recommendations_text.insert(tk.END, f"Pareto Point #{i}: {status}\n")
                             self.recommendations_text.insert(tk.END, "  Objectives:\n")
                             for resp, value in point['objectives'].items():
                                 direction = self.response_directions[resp]
                                 arrow = '↑' if direction == 'maximize' else '↓'
                                 self.recommendations_text.insert(tk.END, f"    {arrow} {resp:<25}: {value:.4f}\n")
+
+                            if violations:
+                                self.recommendations_text.insert(tk.END, "  ⚠️  Constraint Violations:\n")
+                                for violation in violations:
+                                    self.recommendations_text.insert(tk.END, f"    • {violation}\n")
+
                             self.recommendations_text.insert(tk.END, "\n")
 
                         if len(pareto_points) > 5:
@@ -1261,8 +1357,8 @@ class AnalysisTab(ttk.Frame):
                 # Enable export button after successful BO initialization
                 if hasattr(self, 'export_bo_button'):
                     self.export_bo_button.config(state='normal')
-                if hasattr(self, 'export_bo_plots_button'):
-                    self.export_bo_plots_button.config(state='normal')
+
+                self._create_optimization_export_button()
                 
             except Exception as e:
                 self.recommendations_text.insert(tk.END, 
@@ -1272,11 +1368,34 @@ class AnalysisTab(ttk.Frame):
                 # Disable export button if BO failed
                 if hasattr(self, 'export_bo_button'):
                     self.export_bo_button.config(state='disabled')
-                if hasattr(self, 'export_bo_plots_button'):
-                    self.export_bo_plots_button.config(state='disabled')
             
             self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
-    
+
+    def _create_optimization_export_button(self):
+        """Create appropriate export button based on optimization type"""
+        if not AX_AVAILABLE or not hasattr(self, 'export_frame_opt'):
+            return
+
+        for widget in self.export_frame_opt.winfo_children():
+            widget.destroy()
+
+        if self.optimizer.is_multi_objective:
+            self.export_pareto_button = ttk.Button(
+                self.export_frame_opt,
+                text="📊 Pareto Plots",
+                command=self.export_pareto_plots_gui,
+                state='normal'
+            )
+            self.export_pareto_button.pack(side='left', padx=5)
+        else:
+            self.export_bo_plots_button = ttk.Button(
+                self.export_frame_opt,
+                text="📊 BO Plots",
+                command=self.export_bo_plots_gui,
+                state='normal'
+            )
+            self.export_bo_plots_button.pack(side='left', padx=5)
+
     def display_optimization_plot(self):
         """Display Bayesian Optimization predicted response surface or Pareto frontier"""
         if not AX_AVAILABLE or not self.optimizer:
@@ -1834,6 +1953,69 @@ class AnalysisTab(ttk.Frame):
                 f"Error: {str(e)}\n\n"
                 f"Check that you have write permissions for the selected location.")
 
+    def export_pareto_plots_gui(self):
+        """GUI wrapper for exporting Pareto frontier plots"""
+        if not AX_AVAILABLE or not self.optimizer or not self.optimizer.is_initialized:
+            messagebox.showerror("Bayesian Optimization Unavailable",
+                "Bayesian Optimization is not available or not initialized.\n\n"
+                "Make sure you have installed ax-platform:\n"
+                "pip install ax-platform\n\n"
+                "Then run the analysis to initialize the optimizer.")
+            return
+
+        if not self.optimizer.is_multi_objective:
+            messagebox.showwarning("Not Multi-Objective",
+                "Pareto plots are only available for multi-objective optimization.\n\n"
+                "This analysis has only one response variable.")
+            return
+
+        format_options = self._ask_plot_format()
+        if not format_options['format']:
+            return
+
+        file_format = format_options['format']
+        dpi = format_options['dpi']
+
+        format_map = {
+            'png': ("PNG files", "*.png"),
+            'tiff': ("TIFF files", "*.tiff"),
+            'pdf': ("PDF files", "*.pdf"),
+            'eps': ("EPS files", "*.eps")
+        }
+
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=f".{file_format}",
+            filetypes=[format_map[file_format], ("All files", "*.*")],
+            initialfile=f"ParetoFrontier.{file_format}",
+            title="Save Pareto Frontier Plot"
+        )
+
+        if not filepath:
+            return
+
+        try:
+            fig = self.optimizer.plot_pareto_frontier()
+
+            if fig is None:
+                messagebox.showwarning("Export Failed",
+                    "Could not generate Pareto frontier plot.\n\n"
+                    "Pareto visualization requires 2-3 objectives.")
+                return
+
+            fig.savefig(filepath, dpi=dpi, bbox_inches='tight')
+            plt.close(fig)
+
+            messagebox.showinfo("Export Complete",
+                f"Pareto frontier plot saved:\n\n"
+                f"{os.path.basename(filepath)}\n\n"
+                f"Location:\n"
+                f"{os.path.dirname(filepath)}")
+
+        except Exception as e:
+            messagebox.showerror("Export Failed",
+                f"Could not export Pareto plot to file.\n\n"
+                f"Error: {str(e)}\n\n"
+                f"Check that you have write permissions for the selected location.")
 
     def load_results(self):
         """Load results from Excel (called from main window menu)"""
