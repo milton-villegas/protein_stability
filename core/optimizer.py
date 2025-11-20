@@ -20,7 +20,7 @@ except ImportError:
     AX_AVAILABLE = False
 
 # Debug flag for Pareto frontier calculations
-DEBUG = False
+DEBUG = True
 
 
 class BayesianOptimizer:
@@ -602,10 +602,18 @@ class BayesianOptimizer:
                 mean_dict = values[0] if isinstance(values, tuple) else values
 
                 exp_id = metadata.get('id')
+                row_index = metadata.get('row_index')
                 if self.DEBUG and i <= 3:  # Show first 3 for debugging
                     print(f"\n  Pareto point {i}:")
-                    print(f"    Trial: {trial_index}, ID: {exp_id}")
-                    print(f"    Objectives: {mean_dict}")
+                    print(f"    Trial index (Ax): {trial_index}")
+                    print(f"    Row index (pandas): {row_index}")
+                    print(f"    ID: {exp_id}")
+                    print(f"    Parameters (experimental conditions):")
+                    for param_name, param_value in original_params.items():
+                        print(f"      {param_name}: {param_value}")
+                    print(f"    Objectives (results):")
+                    for obj_name, obj_value in mean_dict.items():
+                        print(f"      {obj_name}: {obj_value:.2f}")
 
                 pareto_points.append({
                     'parameters': original_params,
