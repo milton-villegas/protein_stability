@@ -19,6 +19,9 @@ try:
 except ImportError:
     AX_AVAILABLE = False
 
+# Debug flag for Pareto frontier calculations
+DEBUG = True
+
 
 class BayesianOptimizer:
     """Bayesian Optimization for intelligent experiment suggestions"""
@@ -793,16 +796,30 @@ class BayesianOptimizer:
 
         n_objectives = len(self.response_columns)
 
-        # Create figure
-        fig, ax = plt.subplots(1, 1, figsize=(12, 7))
+        # Create figure (sized to fit window like other plots)
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
 
         # Normalize all objectives to 0-1 scale for visualization
         # Get min/max for each objective from ALL data
         normalized_data = {}
+        if DEBUG:
+            print("\n" + "="*70)
+            print("PARALLEL COORDINATES NORMALIZATION DEBUG")
+            print("="*70)
+
         for resp in self.response_columns:
             data_min = self.data[resp].min()
             data_max = self.data[resp].max()
             normalized_data[resp] = {'min': data_min, 'max': data_max}
+
+            if DEBUG:
+                direction = self.response_directions[resp]
+                print(f"\n{resp}:")
+                print(f"  Direction: {direction}")
+                print(f"  Data range: [{data_min:.2f}, {data_max:.2f}]")
+                print(f"  After normalization: lower values → 0, higher values → 1")
+                if direction == 'minimize':
+                    print(f"  After flip: LOWER values (better) → 1, HIGHER values (worse) → 0")
 
         # Plot all observed points (gray, thin lines)
         for idx, row in self.data.iterrows():
@@ -820,14 +837,29 @@ class BayesianOptimizer:
         # Plot Pareto points (colored, thick lines)
         colors = plt.cm.viridis(np.linspace(0, 1, len(pareto_points)))
 
+        if DEBUG:
+            print(f"\nPareto Points (showing first 3):")
+
         for i, (p, color) in enumerate(zip(pareto_points, colors)):
             values = []
+            if DEBUG and i < 3:
+                print(f"\n  Pareto {i+1}:")
+
             for resp in self.response_columns:
                 val = p['objectives'][resp]
                 norm_val = (val - normalized_data[resp]['min']) / (normalized_data[resp]['max'] - normalized_data[resp]['min'] + 1e-10)
+
+                if DEBUG and i < 3:
+                    print(f"    {resp}: raw={val:.2f}, normalized={norm_val:.3f}", end="")
+
                 # Flip for minimize objectives
                 if self.response_directions[resp] == 'minimize':
                     norm_val = 1 - norm_val
+                    if DEBUG and i < 3:
+                        print(f" → flipped={norm_val:.3f}")
+                elif DEBUG and i < 3:
+                    print()
+
                 values.append(norm_val)
 
             # Check constraints
@@ -904,7 +936,8 @@ class BayesianOptimizer:
         angles = np.linspace(0, 2 * np.pi, n_objectives, endpoint=False).tolist()
         angles += angles[:1]  # Complete the circle
 
-        fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(projection='polar'))
+        # Create figure (sized to fit window like other plots)
+        fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
 
         # Normalize objectives to 0-1
         normalized_data = {}
