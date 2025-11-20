@@ -20,7 +20,7 @@ except ImportError:
     AX_AVAILABLE = False
 
 # Debug flag for Pareto frontier calculations
-DEBUG = True
+DEBUG = False
 
 
 class BayesianOptimizer:
