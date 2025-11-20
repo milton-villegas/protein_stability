@@ -538,8 +538,12 @@ class BayesianOptimizer:
             # Convert to more usable format
             pareto_points = []
             for i, (arm_name, (params, values)) in enumerate(pareto_frontier.items(), 1):
-                # Extract trial index from arm_name (format is typically "trial_index_arm_index")
-                trial_index = int(arm_name.split('_')[0])
+                # Extract trial index from arm_name
+                # Ax may return either int directly or string like "trial_0_arm_0"
+                if isinstance(arm_name, int):
+                    trial_index = arm_name
+                else:
+                    trial_index = int(arm_name.split('_')[0])
 
                 # Get metadata for this trial
                 metadata = self.trial_metadata.get(trial_index, {})
