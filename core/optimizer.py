@@ -19,6 +19,9 @@ try:
 except ImportError:
     AX_AVAILABLE = False
 
+# Debug flag for Pareto frontier calculations
+DEBUG = True
+
 
 class BayesianOptimizer:
     """Bayesian Optimization for intelligent experiment suggestions"""
@@ -31,7 +34,7 @@ class BayesianOptimizer:
     }
 
     # Debug flag - set to True to see detailed console output
-    DEBUG = False
+    DEBUG = True
 
     def __init__(self):
         self.ax_client = None
@@ -87,34 +90,36 @@ class BayesianOptimizer:
         # Store optimization directions
         self.response_directions = response_directions or {}
         if self.DEBUG:
-            print(f"[DEBUG OPTIMIZER] set_data() received:")
-            print(f"  - response_columns: {self.response_columns}")
-            print(f"  - response_directions (input): {response_directions}")
+            print("\n" + "="*70)
+            print("OPTIMIZER DATA SETUP")
+            print("="*70)
+            print(f"[DEBUG OPTIMIZER] Response columns: {self.response_columns}")
+            print(f"[DEBUG OPTIMIZER] Response directions (input): {response_directions}")
 
         # Default to maximize if not specified
         for resp in self.response_columns:
             if resp not in self.response_directions:
                 self.response_directions[resp] = 'maximize'
                 if self.DEBUG:
-                    print(f"  - '{resp}' direction not specified, defaulting to 'maximize'")
+                    print(f"  '{resp}' direction not specified, defaulting to 'maximize'")
 
         if self.DEBUG:
-            print(f"  - response_directions (final): {self.response_directions}")
+            print(f"[DEBUG OPTIMIZER] Response directions (final): {self.response_directions}")
 
         # Store response constraints
         self.response_constraints = response_constraints or {}
         if self.DEBUG:
-            print(f"  - response_constraints: {self.response_constraints}")
+            print(f"[DEBUG OPTIMIZER] Response constraints: {self.response_constraints}")
 
         # Store exploration mode
         self.exploration_mode = exploration_mode
         if self.DEBUG:
-            print(f"  - exploration_mode: {self.exploration_mode}")
+            print(f"[DEBUG OPTIMIZER] Exploration mode: {self.exploration_mode}")
 
         # Multi-objective if more than one response
         self.is_multi_objective = len(self.response_columns) > 1
         if self.DEBUG:
-            print(f"  - is_multi_objective: {self.is_multi_objective}")
+            print(f"[DEBUG OPTIMIZER] Multi-objective: {self.is_multi_objective}")
 
         # Create name mappings
         self.reverse_mapping = {name: self._sanitize_name(name) for name in factor_columns}
@@ -189,22 +194,28 @@ class BayesianOptimizer:
         if self.is_multi_objective:
             # Multi-objective optimization
             if self.DEBUG:
-                print(f"\n[DEBUG INIT] Initializing multi-objective Bayesian Optimization")
-                print(f"  Optimizing {len(self.response_columns)} objectives:")
+                print("\n" + "="*70)
+                print("BAYESIAN OPTIMIZATION INITIALIZATION")
+                print("="*70)
+                print(f"[DEBUG INIT] Multi-objective optimization")
+                print(f"[DEBUG INIT] Optimizing {len(self.response_columns)} objectives:")
             for response in self.response_columns:
                 direction = self.response_directions[response]
                 minimize_this = (direction == 'minimize')
                 objectives[response] = ObjectiveProperties(minimize=minimize_this)
                 if self.DEBUG:
                     arrow = '↓' if minimize_this else '↑'
-                    print(f"    {arrow} {response}: {direction} (Ax minimize={minimize_this})")
+                    print(f"  {arrow} {response}: {direction} (Ax minimize={minimize_this})")
         else:
             # Single-objective (backward compatible)
             direction = self.response_directions.get(self.response_column, 'maximize')
             minimize = (direction == 'minimize')
             objectives[self.response_column] = ObjectiveProperties(minimize=minimize)
             if self.DEBUG:
-                print(f"\n[DEBUG INIT] Single-objective optimization:")
+                print("\n" + "="*70)
+                print("BAYESIAN OPTIMIZATION INITIALIZATION")
+                print("="*70)
+                print(f"[DEBUG INIT] Single-objective optimization")
                 arrow = '↓' if minimize else '↑'
                 print(f"  {arrow} {self.response_column}: {direction} (Ax minimize={minimize})")
 
@@ -215,9 +226,9 @@ class BayesianOptimizer:
 
         if self.DEBUG:
             print(f"\n[DEBUG INIT] Building outcome constraints...")
-            print(f"  self.response_constraints = {self.response_constraints}")
-            print(f"  self.exploration_mode = {self.exploration_mode}")
-            print(f"  self.response_columns (objectives) = {self.response_columns}")
+            print(f"  Response constraints: {self.response_constraints}")
+            print(f"  Exploration mode: {self.exploration_mode}")
+            print(f"  Objectives: {self.response_columns}")
 
         if self.response_constraints and not self.exploration_mode:
             if self.DEBUG:
@@ -304,6 +315,8 @@ class BayesianOptimizer:
         # Add existing data as completed trials using sanitized names
         if self.DEBUG:
             print(f"\n[DEBUG INIT] Adding {len(self.data)} existing trials to Ax...")
+            print(f"  Available columns: {list(self.data.columns)}")
+            print(f"  Looking for ID column...")
         for idx, row in self.data.iterrows():
             params = {}
             for factor in self.factor_columns:
@@ -323,7 +336,21 @@ class BayesianOptimizer:
             _, trial_index = self.ax_client.attach_trial(parameters=params)
 
             # Store metadata for this trial
-            exp_id = row.get('ID', None) if 'ID' in row.index else None
+            # Try multiple possible ID column names (case-insensitive)
+            exp_id = None
+            id_col_found = None
+            for id_col in ['ID', 'Id', 'id', 'Exp ID', 'Exp_ID', 'ExpID']:
+                if id_col in row.index:
+                    exp_id = row.get(id_col)
+                    id_col_found = id_col
+                    break
+
+            # If no ID column found, use the pandas index + 1 (convert to 1-based)
+            if exp_id is None:
+                exp_id = idx + 1  # Convert 0-based index to 1-based ID
+                if self.DEBUG and idx == 0:
+                    print(f"  ⚠️  No ID column found, using pandas index + 1 as ID (1-based)")
+
             metadata = {
                 'row_index': idx,
                 'id': exp_id,
@@ -332,7 +359,10 @@ class BayesianOptimizer:
             self.trial_metadata[trial_index] = metadata
 
             if self.DEBUG and idx < 3:  # Show first 3 for debugging
-                print(f"  Trial {trial_index}: ID={exp_id}, row_index={idx}")
+                if id_col_found:
+                    print(f"  Trial {trial_index}: ID={exp_id} (from column '{id_col_found}'), pandas_row={idx}")
+                else:
+                    print(f"  Trial {trial_index}: ID={exp_id} (pandas_row {idx} + 1), pandas_row={idx}")
 
             # Build raw_data dict for all responses
             if self.is_multi_objective:
@@ -402,9 +432,14 @@ class BayesianOptimizer:
         filtered_suggestions = []
 
         if self.DEBUG:
-            print(f"\n[DEBUG SUGGESTIONS] Generating {n} BO suggestions")
+            print("\n" + "="*70)
+            print("BAYESIAN OPTIMIZATION SUGGESTIONS")
+            print("="*70)
+            print(f"[DEBUG SUGGESTIONS] Generating {n} suggestions")
             if has_objective_constraints:
-                print(f"  Objective constraints (informational): {self.objective_constraints}")
+                print(f"  Objective constraints (informational):")
+                for constraint, value in self.objective_constraints.items():
+                    print(f"    {constraint}: {value}")
                 print(f"  Note: BO suggestions not filtered by constraints")
 
         for i in range(max_attempts):
@@ -507,11 +542,11 @@ class BayesianOptimizer:
 
         if self.DEBUG:
             if need_filtering:
-                print(f"[DEBUG SUGGESTIONS] Generated {max_attempts} candidates, {len(result)} met constraints")
+                print(f"\n[DEBUG SUGGESTIONS] ✓ Generated {max_attempts} candidates, {len(result)} met constraints")
                 if len(result) < n:
-                    print(f"  ⚠️  WARNING: Could only find {len(result)}/{n} valid suggestions")
+                    print(f"[DEBUG SUGGESTIONS] ⚠️  Could only find {len(result)}/{n} valid suggestions")
             else:
-                print(f"[DEBUG SUGGESTIONS] Generated {len(result)} suggestions (no filtering needed)")
+                print(f"\n[DEBUG SUGGESTIONS] ✓ Generated {len(result)} suggestions (no filtering needed)")
 
         return result[:n]  # Return at most n suggestions
 
@@ -529,17 +564,23 @@ class BayesianOptimizer:
 
         try:
             if self.DEBUG:
-                print(f"\n[DEBUG PARETO] Getting Pareto frontier...")
+                print("\n" + "="*70)
+                print("PARETO FRONTIER EXTRACTION")
+                print("="*70)
             # Get Pareto frontier from Ax
             pareto_frontier = self.ax_client.get_pareto_optimal_parameters()
             if self.DEBUG:
-                print(f"  Ax returned {len(pareto_frontier)} Pareto-optimal trials")
+                print(f"[DEBUG PARETO] Ax returned {len(pareto_frontier)} Pareto-optimal trials")
 
             # Convert to more usable format
             pareto_points = []
             for i, (arm_name, (params, values)) in enumerate(pareto_frontier.items(), 1):
-                # Extract trial index from arm_name (format is typically "trial_index_arm_index")
-                trial_index = int(arm_name.split('_')[0])
+                # Extract trial index from arm_name
+                # Ax may return either int directly or string like "trial_0_arm_0"
+                if isinstance(arm_name, int):
+                    trial_index = arm_name
+                else:
+                    trial_index = int(arm_name.split('_')[0])
 
                 # Get metadata for this trial
                 metadata = self.trial_metadata.get(trial_index, {})
@@ -561,9 +602,18 @@ class BayesianOptimizer:
                 mean_dict = values[0] if isinstance(values, tuple) else values
 
                 exp_id = metadata.get('id')
+                row_index = metadata.get('row_index')
                 if self.DEBUG and i <= 3:  # Show first 3 for debugging
-                    print(f"  Pareto point {i}: Trial {trial_index}, ID={exp_id}")
-                    print(f"    Objectives: {mean_dict}")
+                    print(f"\n  Pareto point {i}:")
+                    print(f"    Trial index (Ax): {trial_index}")
+                    print(f"    Row index (pandas): {row_index}")
+                    print(f"    ID: {exp_id}")
+                    print(f"    Parameters (experimental conditions):")
+                    for param_name, param_value in original_params.items():
+                        print(f"      {param_name}: {param_value}")
+                    print(f"    Objectives (results):")
+                    for obj_name, obj_value in mean_dict.items():
+                        print(f"      {obj_name}: {obj_value:.2f}")
 
                 pareto_points.append({
                     'parameters': original_params,
@@ -573,12 +623,12 @@ class BayesianOptimizer:
                 })
 
             if self.DEBUG:
-                print(f"[DEBUG PARETO] ✓ Extracted {len(pareto_points)} Pareto points with metadata")
+                print(f"\n[DEBUG PARETO] ✓ Extracted {len(pareto_points)} Pareto points with metadata")
             return pareto_points
 
         except Exception as e:
             if self.DEBUG:
-                print(f"⚠️  Could not extract Pareto frontier: {str(e)}")
+                print(f"\n[DEBUG PARETO] ⚠️  Could not extract Pareto frontier: {str(e)}")
                 import traceback
                 traceback.print_exc()
             return None
@@ -625,10 +675,17 @@ class BayesianOptimizer:
             return None
 
     def plot_pareto_frontier(self):
-        """Create Pareto frontier visualization for multi-objective optimization
+        """
+        Create Pareto frontier visualization for multi-objective optimization.
+
+        Scalable strategy based on number of objectives:
+        - 2 objectives: 2D scatter + parallel coordinates
+        - 3 objectives: Parallel coordinates + radar + optional 3D
+        - 4-6 objectives: Parallel coordinates + radar
+        - 7+ objectives: Parallel coordinates only
 
         Returns:
-            matplotlib Figure or None
+            matplotlib Figure with subplots or None
         """
         if not self.is_multi_objective:
             return None
@@ -641,9 +698,17 @@ class BayesianOptimizer:
 
         n_objectives = len(self.response_columns)
 
+        # Strategy: Always show parallel coordinates (universal),
+        # add other plots based on n_objectives
+        if n_objectives == 2:
+            # 2 objectives: Show 2D scatter + parallel coordinates side by side
+            fig = plt.figure(figsize=(16, 7))
+
+            # Left: 2D scatter (original)
+
         if n_objectives == 2:
             # 2D scatter plot
-            fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+            fig, ax = plt.subplots(1, 1, figsize=(8, 6))
 
             resp1, resp2 = self.response_columns[0], self.response_columns[1]
 
@@ -697,7 +762,7 @@ class BayesianOptimizer:
         elif n_objectives == 3:
             # 3D scatter plot
             from mpl_toolkits.mplot3d import Axes3D
-            fig = plt.figure(figsize=(12, 9))
+            fig = plt.figure(figsize=(9, 7))
             ax = fig.add_subplot(111, projection='3d')
 
             resp1, resp2, resp3 = self.response_columns[0], self.response_columns[1], self.response_columns[2]
@@ -754,6 +819,227 @@ class BayesianOptimizer:
         else:
             print(f"⚠️  Pareto frontier visualization supports 2-3 objectives (you have {n_objectives})")
             return None
+
+    def plot_pareto_parallel_coordinates(self):
+        """
+        Create parallel coordinates plot for Pareto frontier.
+        Works for 2+ objectives. Industry standard for multi-objective visualization.
+
+        Returns:
+            matplotlib Figure or None
+        """
+        if not self.is_multi_objective:
+            return None
+
+        pareto_points = self.get_pareto_frontier()
+
+        if pareto_points is None or len(pareto_points) == 0:
+            print("⚠️  No Pareto frontier points available")
+            return None
+
+        n_objectives = len(self.response_columns)
+
+        # Create figure (sized to fit window like other plots)
+        fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+
+        # Normalize all objectives to 0-1 scale for visualization
+        # Get min/max for each objective from ALL data
+        normalized_data = {}
+        if DEBUG:
+            print("\n" + "="*70)
+            print("PARALLEL COORDINATES NORMALIZATION DEBUG")
+            print("="*70)
+
+        for resp in self.response_columns:
+            data_min = self.data[resp].min()
+            data_max = self.data[resp].max()
+            normalized_data[resp] = {'min': data_min, 'max': data_max}
+
+            if DEBUG:
+                direction = self.response_directions[resp]
+                print(f"\n{resp}:")
+                print(f"  Direction: {direction}")
+                print(f"  Data range: [{data_min:.2f}, {data_max:.2f}]")
+                print(f"  After normalization: lower values → 0, higher values → 1")
+                if direction == 'minimize':
+                    print(f"  After flip: LOWER values (better) → 1, HIGHER values (worse) → 0")
+
+        # Plot all observed points (gray, thin lines)
+        for idx, row in self.data.iterrows():
+            values = []
+            for resp in self.response_columns:
+                val = row[resp]
+                norm_val = (val - normalized_data[resp]['min']) / (normalized_data[resp]['max'] - normalized_data[resp]['min'] + 1e-10)
+                # Flip for minimize objectives (so "better" is always up)
+                if self.response_directions[resp] == 'minimize':
+                    norm_val = 1 - norm_val
+                values.append(norm_val)
+
+            ax.plot(range(n_objectives), values, c='lightgray', alpha=0.3, linewidth=0.8, zorder=1)
+
+        # Plot Pareto points (colored, thick lines)
+        colors = plt.cm.viridis(np.linspace(0, 1, len(pareto_points)))
+
+        if DEBUG:
+            print(f"\nPareto Points (showing first 3):")
+
+        for i, (p, color) in enumerate(zip(pareto_points, colors)):
+            values = []
+            if DEBUG and i < 3:
+                print(f"\n  Pareto {i+1}:")
+
+            for resp in self.response_columns:
+                val = p['objectives'][resp]
+                norm_val = (val - normalized_data[resp]['min']) / (normalized_data[resp]['max'] - normalized_data[resp]['min'] + 1e-10)
+
+                if DEBUG and i < 3:
+                    print(f"    {resp}: raw={val:.2f}, normalized={norm_val:.3f}", end="")
+
+                # Flip for minimize objectives
+                if self.response_directions[resp] == 'minimize':
+                    norm_val = 1 - norm_val
+                    if DEBUG and i < 3:
+                        print(f" → flipped={norm_val:.3f}")
+                elif DEBUG and i < 3:
+                    print()
+
+                values.append(norm_val)
+
+            # Check constraints
+            violations = self.check_constraint_violations(p['objectives'])
+            linestyle = '--' if violations else '-'
+            linewidth = 2.5 if not violations else 2.0
+
+            label = f"Pareto {i+1}"
+            if p.get('id') is not None:
+                label += f" (ID: {p['id']})"
+
+            ax.plot(range(n_objectives), values, c=color, linewidth=linewidth,
+                   linestyle=linestyle, marker='o', markersize=8, label=label, zorder=2)
+
+        # Customize axes
+        ax.set_xticks(range(n_objectives))
+
+        # Create labels with direction arrows
+        labels = []
+        for resp in self.response_columns:
+            direction = self.response_directions[resp]
+            arrow = '↑' if direction == 'maximize' else '↓'
+            labels.append(f"{resp}\n{arrow} {direction}")
+
+        ax.set_xticklabels(labels, fontsize=10, fontweight='bold')
+        ax.set_ylabel('Normalized Performance\n(higher is better after normalization)',
+                     fontsize=11, fontweight='bold')
+        ax.set_ylim(-0.05, 1.05)
+        ax.set_title(f'Pareto Frontier - Parallel Coordinates\n({len(pareto_points)} optimal trade-offs)',
+                    fontsize=13, fontweight='bold', pad=15)
+
+        # Add grid
+        ax.grid(True, alpha=0.3, axis='y')
+        ax.set_axisbelow(True)
+
+        # Legend (show only first 10 to avoid clutter)
+        if len(pareto_points) <= 10:
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+        else:
+            ax.text(1.02, 0.5, f'{len(pareto_points)} Pareto points\n(colors show different solutions)',
+                   transform=ax.transAxes, fontsize=10, verticalalignment='center')
+
+        plt.tight_layout()
+        return fig
+
+    def plot_pareto_radar(self):
+        """
+        Create radar/spider chart for Pareto frontier.
+        Works well for 3-6 objectives. Shows trade-off shapes.
+
+        Returns:
+            matplotlib Figure or None
+        """
+        if not self.is_multi_objective:
+            return None
+
+        pareto_points = self.get_pareto_frontier()
+
+        if pareto_points is None or len(pareto_points) == 0:
+            print("⚠️  No Pareto frontier points available")
+            return None
+
+        n_objectives = len(self.response_columns)
+
+        if n_objectives < 3:
+            print("⚠️  Radar chart requires at least 3 objectives (you have {n_objectives})")
+            return None
+
+        if n_objectives > 6:
+            print("⚠️  Radar chart not recommended for >6 objectives (too cluttered)")
+            return None
+
+        # Setup radar chart
+        angles = np.linspace(0, 2 * np.pi, n_objectives, endpoint=False).tolist()
+        angles += angles[:1]  # Complete the circle
+
+        # Create figure (sized to fit window like other plots)
+        fig, ax = plt.subplots(figsize=(7, 7), subplot_kw=dict(projection='polar'))
+
+        # Normalize objectives to 0-1
+        normalized_data = {}
+        for resp in self.response_columns:
+            data_min = self.data[resp].min()
+            data_max = self.data[resp].max()
+            normalized_data[resp] = {'min': data_min, 'max': data_max}
+
+        # Plot each Pareto point
+        colors = plt.cm.viridis(np.linspace(0, 1, len(pareto_points)))
+
+        for i, (p, color) in enumerate(zip(pareto_points, colors)):
+            values = []
+            for resp in self.response_columns:
+                val = p['objectives'][resp]
+                norm_val = (val - normalized_data[resp]['min']) / (normalized_data[resp]['max'] - normalized_data[resp]['min'] + 1e-10)
+                # Flip for minimize objectives
+                if self.response_directions[resp] == 'minimize':
+                    norm_val = 1 - norm_val
+                values.append(norm_val)
+
+            values += values[:1]  # Complete the circle
+
+            violations = self.check_constraint_violations(p['objectives'])
+            linestyle = '--' if violations else '-'
+            linewidth = 2.0 if not violations else 1.5
+
+            label = f"Pareto {i+1}"
+            if p.get('id') is not None:
+                label += f" (ID: {p['id']})"
+
+            ax.plot(angles, values, 'o-', linewidth=linewidth, linestyle=linestyle,
+                   color=color, label=label, markersize=6)
+            ax.fill(angles, values, alpha=0.15, color=color)
+
+        # Customize
+        ax.set_xticks(angles[:-1])
+
+        labels = []
+        for resp in self.response_columns:
+            direction = self.response_directions[resp]
+            arrow = '↑' if direction == 'maximize' else '↓'
+            labels.append(f"{resp} {arrow}")
+
+        ax.set_xticklabels(labels, fontsize=10, fontweight='bold')
+        ax.set_ylim(0, 1)
+        ax.set_yticks([0.25, 0.5, 0.75, 1.0])
+        ax.set_yticklabels(['25%', '50%', '75%', '100%'], fontsize=9)
+        ax.set_title(f'Pareto Frontier - Radar Chart\n({len(pareto_points)} optimal trade-offs)',
+                    fontsize=13, fontweight='bold', pad=20, y=1.08)
+
+        # Legend
+        if len(pareto_points) <= 8:
+            ax.legend(bbox_to_anchor=(1.3, 1.0), loc='upper left', fontsize=9)
+
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        return fig
 
     def _create_suggestion_heatmap(self, factor_x_orig, factor_y_orig,
                                    factor_x_san, factor_y_san, X, Y):
