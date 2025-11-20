@@ -345,11 +345,11 @@ class BayesianOptimizer:
                     id_col_found = id_col
                     break
 
-            # If no ID column found, use the pandas index
+            # If no ID column found, use the pandas index + 1 (convert to 1-based)
             if exp_id is None:
-                exp_id = idx
+                exp_id = idx + 1  # Convert 0-based index to 1-based ID
                 if self.DEBUG and idx == 0:
-                    print(f"  ⚠️  No ID column found, using pandas index as ID")
+                    print(f"  ⚠️  No ID column found, using pandas index + 1 as ID (1-based)")
 
             metadata = {
                 'row_index': idx,
@@ -360,9 +360,9 @@ class BayesianOptimizer:
 
             if self.DEBUG and idx < 3:  # Show first 3 for debugging
                 if id_col_found:
-                    print(f"  Trial {trial_index}: ID={exp_id} (from column '{id_col_found}'), row_index={idx}")
+                    print(f"  Trial {trial_index}: ID={exp_id} (from column '{id_col_found}'), pandas_row={idx}")
                 else:
-                    print(f"  Trial {trial_index}: ID={exp_id} (from pandas index), row_index={idx}")
+                    print(f"  Trial {trial_index}: ID={exp_id} (pandas_row {idx} + 1), pandas_row={idx}")
 
             # Build raw_data dict for all responses
             if self.is_multi_objective:
