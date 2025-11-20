@@ -31,7 +31,7 @@ class BayesianOptimizer:
     }
 
     # Debug flag - set to True to see detailed console output
-    DEBUG = False
+    DEBUG = True
 
     def __init__(self):
         self.ax_client = None
