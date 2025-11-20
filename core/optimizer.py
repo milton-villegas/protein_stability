@@ -90,34 +90,36 @@ class BayesianOptimizer:
         # Store optimization directions
         self.response_directions = response_directions or {}
         if self.DEBUG:
-            print(f"[DEBUG OPTIMIZER] set_data() received:")
-            print(f"  - response_columns: {self.response_columns}")
-            print(f"  - response_directions (input): {response_directions}")
+            print("\n" + "="*70)
+            print("OPTIMIZER DATA SETUP")
+            print("="*70)
+            print(f"[DEBUG OPTIMIZER] Response columns: {self.response_columns}")
+            print(f"[DEBUG OPTIMIZER] Response directions (input): {response_directions}")
 
         # Default to maximize if not specified
         for resp in self.response_columns:
             if resp not in self.response_directions:
                 self.response_directions[resp] = 'maximize'
                 if self.DEBUG:
-                    print(f"  - '{resp}' direction not specified, defaulting to 'maximize'")
+                    print(f"  '{resp}' direction not specified, defaulting to 'maximize'")
 
         if self.DEBUG:
-            print(f"  - response_directions (final): {self.response_directions}")
+            print(f"[DEBUG OPTIMIZER] Response directions (final): {self.response_directions}")
 
         # Store response constraints
         self.response_constraints = response_constraints or {}
         if self.DEBUG:
-            print(f"  - response_constraints: {self.response_constraints}")
+            print(f"[DEBUG OPTIMIZER] Response constraints: {self.response_constraints}")
 
         # Store exploration mode
         self.exploration_mode = exploration_mode
         if self.DEBUG:
-            print(f"  - exploration_mode: {self.exploration_mode}")
+            print(f"[DEBUG OPTIMIZER] Exploration mode: {self.exploration_mode}")
 
         # Multi-objective if more than one response
         self.is_multi_objective = len(self.response_columns) > 1
         if self.DEBUG:
-            print(f"  - is_multi_objective: {self.is_multi_objective}")
+            print(f"[DEBUG OPTIMIZER] Multi-objective: {self.is_multi_objective}")
 
         # Create name mappings
         self.reverse_mapping = {name: self._sanitize_name(name) for name in factor_columns}
@@ -192,22 +194,28 @@ class BayesianOptimizer:
         if self.is_multi_objective:
             # Multi-objective optimization
             if self.DEBUG:
-                print(f"\n[DEBUG INIT] Initializing multi-objective Bayesian Optimization")
-                print(f"  Optimizing {len(self.response_columns)} objectives:")
+                print("\n" + "="*70)
+                print("BAYESIAN OPTIMIZATION INITIALIZATION")
+                print("="*70)
+                print(f"[DEBUG INIT] Multi-objective optimization")
+                print(f"[DEBUG INIT] Optimizing {len(self.response_columns)} objectives:")
             for response in self.response_columns:
                 direction = self.response_directions[response]
                 minimize_this = (direction == 'minimize')
                 objectives[response] = ObjectiveProperties(minimize=minimize_this)
                 if self.DEBUG:
                     arrow = '↓' if minimize_this else '↑'
-                    print(f"    {arrow} {response}: {direction} (Ax minimize={minimize_this})")
+                    print(f"  {arrow} {response}: {direction} (Ax minimize={minimize_this})")
         else:
             # Single-objective (backward compatible)
             direction = self.response_directions.get(self.response_column, 'maximize')
             minimize = (direction == 'minimize')
             objectives[self.response_column] = ObjectiveProperties(minimize=minimize)
             if self.DEBUG:
-                print(f"\n[DEBUG INIT] Single-objective optimization:")
+                print("\n" + "="*70)
+                print("BAYESIAN OPTIMIZATION INITIALIZATION")
+                print("="*70)
+                print(f"[DEBUG INIT] Single-objective optimization")
                 arrow = '↓' if minimize else '↑'
                 print(f"  {arrow} {self.response_column}: {direction} (Ax minimize={minimize})")
 
@@ -218,9 +226,9 @@ class BayesianOptimizer:
 
         if self.DEBUG:
             print(f"\n[DEBUG INIT] Building outcome constraints...")
-            print(f"  self.response_constraints = {self.response_constraints}")
-            print(f"  self.exploration_mode = {self.exploration_mode}")
-            print(f"  self.response_columns (objectives) = {self.response_columns}")
+            print(f"  Response constraints: {self.response_constraints}")
+            print(f"  Exploration mode: {self.exploration_mode}")
+            print(f"  Objectives: {self.response_columns}")
 
         if self.response_constraints and not self.exploration_mode:
             if self.DEBUG:
@@ -405,9 +413,14 @@ class BayesianOptimizer:
         filtered_suggestions = []
 
         if self.DEBUG:
-            print(f"\n[DEBUG SUGGESTIONS] Generating {n} BO suggestions")
+            print("\n" + "="*70)
+            print("BAYESIAN OPTIMIZATION SUGGESTIONS")
+            print("="*70)
+            print(f"[DEBUG SUGGESTIONS] Generating {n} suggestions")
             if has_objective_constraints:
-                print(f"  Objective constraints (informational): {self.objective_constraints}")
+                print(f"  Objective constraints (informational):")
+                for constraint, value in self.objective_constraints.items():
+                    print(f"    {constraint}: {value}")
                 print(f"  Note: BO suggestions not filtered by constraints")
 
         for i in range(max_attempts):
@@ -510,11 +523,11 @@ class BayesianOptimizer:
 
         if self.DEBUG:
             if need_filtering:
-                print(f"[DEBUG SUGGESTIONS] Generated {max_attempts} candidates, {len(result)} met constraints")
+                print(f"\n[DEBUG SUGGESTIONS] ✓ Generated {max_attempts} candidates, {len(result)} met constraints")
                 if len(result) < n:
-                    print(f"  ⚠️  WARNING: Could only find {len(result)}/{n} valid suggestions")
+                    print(f"[DEBUG SUGGESTIONS] ⚠️  Could only find {len(result)}/{n} valid suggestions")
             else:
-                print(f"[DEBUG SUGGESTIONS] Generated {len(result)} suggestions (no filtering needed)")
+                print(f"\n[DEBUG SUGGESTIONS] ✓ Generated {len(result)} suggestions (no filtering needed)")
 
         return result[:n]  # Return at most n suggestions
 
@@ -532,11 +545,13 @@ class BayesianOptimizer:
 
         try:
             if self.DEBUG:
-                print(f"\n[DEBUG PARETO] Getting Pareto frontier...")
+                print("\n" + "="*70)
+                print("PARETO FRONTIER EXTRACTION")
+                print("="*70)
             # Get Pareto frontier from Ax
             pareto_frontier = self.ax_client.get_pareto_optimal_parameters()
             if self.DEBUG:
-                print(f"  Ax returned {len(pareto_frontier)} Pareto-optimal trials")
+                print(f"[DEBUG PARETO] Ax returned {len(pareto_frontier)} Pareto-optimal trials")
 
             # Convert to more usable format
             pareto_points = []
@@ -569,7 +584,8 @@ class BayesianOptimizer:
 
                 exp_id = metadata.get('id')
                 if self.DEBUG and i <= 3:  # Show first 3 for debugging
-                    print(f"  Pareto point {i}: Trial {trial_index}, ID={exp_id}")
+                    print(f"\n  Pareto point {i}:")
+                    print(f"    Trial: {trial_index}, ID: {exp_id}")
                     print(f"    Objectives: {mean_dict}")
 
                 pareto_points.append({
@@ -580,12 +596,12 @@ class BayesianOptimizer:
                 })
 
             if self.DEBUG:
-                print(f"[DEBUG PARETO] ✓ Extracted {len(pareto_points)} Pareto points with metadata")
+                print(f"\n[DEBUG PARETO] ✓ Extracted {len(pareto_points)} Pareto points with metadata")
             return pareto_points
 
         except Exception as e:
             if self.DEBUG:
-                print(f"⚠️  Could not extract Pareto frontier: {str(e)}")
+                print(f"\n[DEBUG PARETO] ⚠️  Could not extract Pareto frontier: {str(e)}")
                 import traceback
                 traceback.print_exc()
             return None
@@ -665,7 +681,7 @@ class BayesianOptimizer:
 
         if n_objectives == 2:
             # 2D scatter plot
-            fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+            fig, ax = plt.subplots(1, 1, figsize=(8, 6))
 
             resp1, resp2 = self.response_columns[0], self.response_columns[1]
 
@@ -719,7 +735,7 @@ class BayesianOptimizer:
         elif n_objectives == 3:
             # 3D scatter plot
             from mpl_toolkits.mplot3d import Axes3D
-            fig = plt.figure(figsize=(12, 9))
+            fig = plt.figure(figsize=(9, 7))
             ax = fig.add_subplot(111, projection='3d')
 
             resp1, resp2, resp3 = self.response_columns[0], self.response_columns[1], self.response_columns[2]
@@ -797,7 +813,7 @@ class BayesianOptimizer:
         n_objectives = len(self.response_columns)
 
         # Create figure (sized to fit window like other plots)
-        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        fig, ax = plt.subplots(1, 1, figsize=(8, 5))
 
         # Normalize all objectives to 0-1 scale for visualization
         # Get min/max for each objective from ALL data
@@ -937,7 +953,7 @@ class BayesianOptimizer:
         angles += angles[:1]  # Complete the circle
 
         # Create figure (sized to fit window like other plots)
-        fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
+        fig, ax = plt.subplots(figsize=(7, 7), subplot_kw=dict(projection='polar'))
 
         # Normalize objectives to 0-1
         normalized_data = {}
