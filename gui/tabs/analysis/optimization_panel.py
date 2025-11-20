@@ -611,7 +611,12 @@ class OptimizationPanelMixin:
         """
         Display Bayesian Optimization predicted response surface or Pareto frontier.
 
-        For multi-objective optimization, displays the Pareto frontier visualization.
+        For multi-objective optimization, displays scalable Pareto visualizations:
+        - 2 objectives: 2D scatter + parallel coordinates
+        - 3 objectives: Parallel coordinates + radar + 3D
+        - 4-6 objectives: Parallel coordinates + radar
+        - 7+ objectives: Parallel coordinates only
+
         For single-objective optimization, displays the acquisition/response surface plot.
 
         Requirements:
@@ -626,36 +631,60 @@ class OptimizationPanelMixin:
             widget.destroy()
 
         try:
-            # Multi-objective: Show Pareto frontier
+            # Multi-objective: Show multiple Pareto visualizations
             if self.optimizer.is_multi_objective:
-                fig = self.optimizer.plot_pareto_frontier()
+                n_objectives = len(self.selected_responses)
 
-                if fig is None:
-                    message_label = ttk.Label(
-                        self.optimization_frame,
-                        text="Pareto frontier plot requires 2-3 objectives.\n"
-                             f"Your selection has {len(self.selected_responses)} responses.",
-                        font=('TkDefaultFont', 12),
-                        justify='center'
-                    )
-                    message_label.pack(expand=True)
-                    return
+                # Always show parallel coordinates (universal visualization)
+                fig_parallel = self.optimizer.plot_pareto_parallel_coordinates()
 
-                canvas = FigureCanvasTkAgg(fig, master=self.optimization_frame)
-                canvas.draw()
-                canvas_widget = canvas.get_tk_widget()
-                canvas_widget.pack(fill='both', expand=True)
+                if fig_parallel:
+                    canvas = FigureCanvasTkAgg(fig_parallel, master=self.optimization_frame)
+                    canvas.draw()
+                    canvas_widget = canvas.get_tk_widget()
+                    canvas_widget.pack(fill='both', expand=True, pady=(0, 10))
 
-                # Bind mousewheel
-                if hasattr(self.optimization_frame, '_bind_mousewheel'):
-                    self.optimization_frame._bind_mousewheel(canvas_widget)
+                    if hasattr(self.optimization_frame, '_bind_mousewheel'):
+                        self.optimization_frame._bind_mousewheel(canvas_widget)
+
+                    plt.close(fig_parallel)
+
+                # Add radar chart for 3-6 objectives
+                if 3 <= n_objectives <= 6:
+                    fig_radar = self.optimizer.plot_pareto_radar()
+
+                    if fig_radar:
+                        canvas = FigureCanvasTkAgg(fig_radar, master=self.optimization_frame)
+                        canvas.draw()
+                        canvas_widget = canvas.get_tk_widget()
+                        canvas_widget.pack(fill='both', expand=True, pady=(0, 10))
+
+                        if hasattr(self.optimization_frame, '_bind_mousewheel'):
+                            self.optimization_frame._bind_mousewheel(canvas_widget)
+
+                        plt.close(fig_radar)
+
+                # Add original visualizations (2D scatter for n=2, 3D for n=3)
+                if n_objectives in [2, 3]:
+                    fig = self.optimizer.plot_pareto_frontier()
+
+                    if fig:
+                        canvas = FigureCanvasTkAgg(fig, master=self.optimization_frame)
+                        canvas.draw()
+                        canvas_widget = canvas.get_tk_widget()
+                        canvas_widget.pack(fill='both', expand=True)
+
+                        # Bind mousewheel
+                        if hasattr(self.optimization_frame, '_bind_mousewheel'):
+                            self.optimization_frame._bind_mousewheel(canvas_widget)
+
+                        plt.close(fig)
 
                 # Reset scroll position to top
                 if hasattr(self.optimization_frame, '_scroll_canvas'):
                     self.optimization_frame._scroll_canvas.update_idletasks()
                     self.optimization_frame._scroll_canvas.yview_moveto(0)
 
-                plt.close(fig)
                 return
 
             # Single-objective: Show acquisition plot (original behavior)

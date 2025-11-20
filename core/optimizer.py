@@ -629,10 +629,17 @@ class BayesianOptimizer:
             return None
 
     def plot_pareto_frontier(self):
-        """Create Pareto frontier visualization for multi-objective optimization
+        """
+        Create Pareto frontier visualization for multi-objective optimization.
+
+        Scalable strategy based on number of objectives:
+        - 2 objectives: 2D scatter + parallel coordinates
+        - 3 objectives: Parallel coordinates + radar + optional 3D
+        - 4-6 objectives: Parallel coordinates + radar
+        - 7+ objectives: Parallel coordinates only
 
         Returns:
-            matplotlib Figure or None
+            matplotlib Figure with subplots or None
         """
         if not self.is_multi_objective:
             return None
@@ -644,6 +651,14 @@ class BayesianOptimizer:
             return None
 
         n_objectives = len(self.response_columns)
+
+        # Strategy: Always show parallel coordinates (universal),
+        # add other plots based on n_objectives
+        if n_objectives == 2:
+            # 2 objectives: Show 2D scatter + parallel coordinates side by side
+            fig = plt.figure(figsize=(16, 7))
+
+            # Left: 2D scatter (original)
 
         if n_objectives == 2:
             # 2D scatter plot
@@ -758,6 +773,197 @@ class BayesianOptimizer:
         else:
             print(f"⚠️  Pareto frontier visualization supports 2-3 objectives (you have {n_objectives})")
             return None
+
+    def plot_pareto_parallel_coordinates(self):
+        """
+        Create parallel coordinates plot for Pareto frontier.
+        Works for 2+ objectives. Industry standard for multi-objective visualization.
+
+        Returns:
+            matplotlib Figure or None
+        """
+        if not self.is_multi_objective:
+            return None
+
+        pareto_points = self.get_pareto_frontier()
+
+        if pareto_points is None or len(pareto_points) == 0:
+            print("⚠️  No Pareto frontier points available")
+            return None
+
+        n_objectives = len(self.response_columns)
+
+        # Create figure
+        fig, ax = plt.subplots(1, 1, figsize=(12, 7))
+
+        # Normalize all objectives to 0-1 scale for visualization
+        # Get min/max for each objective from ALL data
+        normalized_data = {}
+        for resp in self.response_columns:
+            data_min = self.data[resp].min()
+            data_max = self.data[resp].max()
+            normalized_data[resp] = {'min': data_min, 'max': data_max}
+
+        # Plot all observed points (gray, thin lines)
+        for idx, row in self.data.iterrows():
+            values = []
+            for resp in self.response_columns:
+                val = row[resp]
+                norm_val = (val - normalized_data[resp]['min']) / (normalized_data[resp]['max'] - normalized_data[resp]['min'] + 1e-10)
+                # Flip for minimize objectives (so "better" is always up)
+                if self.response_directions[resp] == 'minimize':
+                    norm_val = 1 - norm_val
+                values.append(norm_val)
+
+            ax.plot(range(n_objectives), values, c='lightgray', alpha=0.3, linewidth=0.8, zorder=1)
+
+        # Plot Pareto points (colored, thick lines)
+        colors = plt.cm.viridis(np.linspace(0, 1, len(pareto_points)))
+
+        for i, (p, color) in enumerate(zip(pareto_points, colors)):
+            values = []
+            for resp in self.response_columns:
+                val = p['objectives'][resp]
+                norm_val = (val - normalized_data[resp]['min']) / (normalized_data[resp]['max'] - normalized_data[resp]['min'] + 1e-10)
+                # Flip for minimize objectives
+                if self.response_directions[resp] == 'minimize':
+                    norm_val = 1 - norm_val
+                values.append(norm_val)
+
+            # Check constraints
+            violations = self.check_constraint_violations(p['objectives'])
+            linestyle = '--' if violations else '-'
+            linewidth = 2.5 if not violations else 2.0
+
+            label = f"Pareto {i+1}"
+            if p.get('id') is not None:
+                label += f" (ID: {p['id']})"
+
+            ax.plot(range(n_objectives), values, c=color, linewidth=linewidth,
+                   linestyle=linestyle, marker='o', markersize=8, label=label, zorder=2)
+
+        # Customize axes
+        ax.set_xticks(range(n_objectives))
+
+        # Create labels with direction arrows
+        labels = []
+        for resp in self.response_columns:
+            direction = self.response_directions[resp]
+            arrow = '↑' if direction == 'maximize' else '↓'
+            labels.append(f"{resp}\n{arrow} {direction}")
+
+        ax.set_xticklabels(labels, fontsize=10, fontweight='bold')
+        ax.set_ylabel('Normalized Performance\n(higher is better after normalization)',
+                     fontsize=11, fontweight='bold')
+        ax.set_ylim(-0.05, 1.05)
+        ax.set_title(f'Pareto Frontier - Parallel Coordinates\n({len(pareto_points)} optimal trade-offs)',
+                    fontsize=13, fontweight='bold', pad=15)
+
+        # Add grid
+        ax.grid(True, alpha=0.3, axis='y')
+        ax.set_axisbelow(True)
+
+        # Legend (show only first 10 to avoid clutter)
+        if len(pareto_points) <= 10:
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+        else:
+            ax.text(1.02, 0.5, f'{len(pareto_points)} Pareto points\n(colors show different solutions)',
+                   transform=ax.transAxes, fontsize=10, verticalalignment='center')
+
+        plt.tight_layout()
+        return fig
+
+    def plot_pareto_radar(self):
+        """
+        Create radar/spider chart for Pareto frontier.
+        Works well for 3-6 objectives. Shows trade-off shapes.
+
+        Returns:
+            matplotlib Figure or None
+        """
+        if not self.is_multi_objective:
+            return None
+
+        pareto_points = self.get_pareto_frontier()
+
+        if pareto_points is None or len(pareto_points) == 0:
+            print("⚠️  No Pareto frontier points available")
+            return None
+
+        n_objectives = len(self.response_columns)
+
+        if n_objectives < 3:
+            print("⚠️  Radar chart requires at least 3 objectives (you have {n_objectives})")
+            return None
+
+        if n_objectives > 6:
+            print("⚠️  Radar chart not recommended for >6 objectives (too cluttered)")
+            return None
+
+        # Setup radar chart
+        angles = np.linspace(0, 2 * np.pi, n_objectives, endpoint=False).tolist()
+        angles += angles[:1]  # Complete the circle
+
+        fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(projection='polar'))
+
+        # Normalize objectives to 0-1
+        normalized_data = {}
+        for resp in self.response_columns:
+            data_min = self.data[resp].min()
+            data_max = self.data[resp].max()
+            normalized_data[resp] = {'min': data_min, 'max': data_max}
+
+        # Plot each Pareto point
+        colors = plt.cm.viridis(np.linspace(0, 1, len(pareto_points)))
+
+        for i, (p, color) in enumerate(zip(pareto_points, colors)):
+            values = []
+            for resp in self.response_columns:
+                val = p['objectives'][resp]
+                norm_val = (val - normalized_data[resp]['min']) / (normalized_data[resp]['max'] - normalized_data[resp]['min'] + 1e-10)
+                # Flip for minimize objectives
+                if self.response_directions[resp] == 'minimize':
+                    norm_val = 1 - norm_val
+                values.append(norm_val)
+
+            values += values[:1]  # Complete the circle
+
+            violations = self.check_constraint_violations(p['objectives'])
+            linestyle = '--' if violations else '-'
+            linewidth = 2.0 if not violations else 1.5
+
+            label = f"Pareto {i+1}"
+            if p.get('id') is not None:
+                label += f" (ID: {p['id']})"
+
+            ax.plot(angles, values, 'o-', linewidth=linewidth, linestyle=linestyle,
+                   color=color, label=label, markersize=6)
+            ax.fill(angles, values, alpha=0.15, color=color)
+
+        # Customize
+        ax.set_xticks(angles[:-1])
+
+        labels = []
+        for resp in self.response_columns:
+            direction = self.response_directions[resp]
+            arrow = '↑' if direction == 'maximize' else '↓'
+            labels.append(f"{resp} {arrow}")
+
+        ax.set_xticklabels(labels, fontsize=10, fontweight='bold')
+        ax.set_ylim(0, 1)
+        ax.set_yticks([0.25, 0.5, 0.75, 1.0])
+        ax.set_yticklabels(['25%', '50%', '75%', '100%'], fontsize=9)
+        ax.set_title(f'Pareto Frontier - Radar Chart\n({len(pareto_points)} optimal trade-offs)',
+                    fontsize=13, fontweight='bold', pad=20, y=1.08)
+
+        # Legend
+        if len(pareto_points) <= 8:
+            ax.legend(bbox_to_anchor=(1.3, 1.0), loc='upper left', fontsize=9)
+
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        return fig
 
     def _create_suggestion_heatmap(self, factor_x_orig, factor_y_orig,
                                    factor_x_san, factor_y_san, X, Y):
