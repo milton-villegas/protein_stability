@@ -152,6 +152,16 @@ DESIGN_TYPES: Dict[str, Dict[str, Any]] = {
         "description": "Space-filling design with configurable sample size",
         "parameters": ["sample_size", "use_smt"]
     },
+    "d_optimal": {
+        "display_name": "D-Optimal (model-optimized)",
+        "min_factors": 2,
+        "max_factors": None,
+        "supports_categorical": True,
+        "requires_pydoe3": False,
+        "requires_smt": False,
+        "description": "Optimal design for specified model with exact run count",
+        "parameters": ["n_samples", "model_type"]
+    },
     "fractional": {
         "display_name": "2-Level Fractional Factorial (screening)",
         "min_factors": 3,
@@ -204,6 +214,9 @@ FRACTIONAL_RESOLUTION_OPTIONS = ["III", "IV", "V"]
 
 CCD_TYPE_OPTIONS = ["circumscribed", "inscribed", "faced"]
 """Central Composite Design type options"""
+
+D_OPTIMAL_MODEL_OPTIONS = ["linear", "interactions", "quadratic"]
+"""Model type options for D-Optimal designs"""
 
 DEFAULT_CENTER_POINTS = 3
 """Default number of center points for response surface designs"""

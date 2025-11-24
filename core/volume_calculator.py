@@ -17,7 +17,8 @@ class VolumeCalculator:
         final_volume: float,
         buffer_ph_values: Optional[List[str]] = None,
         protein_stock: Optional[float] = None,
-        protein_final: Optional[float] = None
+        protein_final: Optional[float] = None,
+        per_level_concs: Optional[Dict[str, Dict[str, Dict[str, float]]]] = None
     ) -> Dict[str, float]:
         """
         Calculate reagent volumes using C1V1 = C2V2 formula.
@@ -36,6 +37,7 @@ class VolumeCalculator:
             buffer_ph_values: List of unique pH values (for buffer handling)
             protein_stock: Protein stock concentration (mg/mL), optional
             protein_final: Desired final protein concentration (mg/mL), optional
+            per_level_concs: Dict of factor → level → {"stock": float, "final": float}, optional
 
         Returns:
             Dict of reagent → volume (µL)
@@ -63,29 +65,63 @@ class VolumeCalculator:
             volumes.update(buffer_vols)
             total_volume_used += buffer_vol_used
 
-        # Handle detergent with concentration pairing
-        if "detergent" in factor_values and "detergent_concentration" in factor_values:
-            det_vols, det_vol_used = VolumeCalculator._calculate_categorical_volumes(
-                factor_values["detergent"],
-                factor_values.get("detergent_concentration", 0),
-                stock_concentrations.get("detergent_concentration", 0),
-                final_volume,
-                "detergent"
-            )
-            volumes.update(det_vols)
-            total_volume_used += det_vol_used
+        # Handle detergent with concentration pairing (check per-level first)
+        if "detergent" in factor_values:
+            detergent_type = str(factor_values["detergent"])
+            per_level_det = per_level_concs.get("detergent", {}) if per_level_concs else {}
 
-        # Handle reducing agent with concentration pairing
-        if "reducing_agent" in factor_values and "reducing_agent_concentration" in factor_values:
-            agent_vols, agent_vol_used = VolumeCalculator._calculate_categorical_volumes(
-                factor_values["reducing_agent"],
-                factor_values.get("reducing_agent_concentration", 0),
-                stock_concentrations.get("reducing_agent_concentration", 0),
-                final_volume,
-                "reducing_agent"
-            )
-            volumes.update(agent_vols)
-            total_volume_used += agent_vol_used
+            if per_level_det and detergent_type in per_level_det:
+                # Use per-level concentrations
+                level_data = per_level_det[detergent_type]
+                det_vols, det_vol_used = VolumeCalculator._calculate_categorical_volumes_per_level(
+                    detergent_type,
+                    level_data["stock"],
+                    level_data["final"],
+                    final_volume,
+                    "detergent"
+                )
+                volumes.update(det_vols)
+                total_volume_used += det_vol_used
+            elif "detergent_concentration" in factor_values:
+                # Fall back to normal mode
+                det_vols, det_vol_used = VolumeCalculator._calculate_categorical_volumes(
+                    detergent_type,
+                    factor_values.get("detergent_concentration", 0),
+                    stock_concentrations.get("detergent_concentration", 0),
+                    final_volume,
+                    "detergent"
+                )
+                volumes.update(det_vols)
+                total_volume_used += det_vol_used
+
+        # Handle reducing agent with concentration pairing (check per-level first)
+        if "reducing_agent" in factor_values:
+            agent_type = str(factor_values["reducing_agent"])
+            per_level_agent = per_level_concs.get("reducing_agent", {}) if per_level_concs else {}
+
+            if per_level_agent and agent_type in per_level_agent:
+                # Use per-level concentrations
+                level_data = per_level_agent[agent_type]
+                agent_vols, agent_vol_used = VolumeCalculator._calculate_categorical_volumes_per_level(
+                    agent_type,
+                    level_data["stock"],
+                    level_data["final"],
+                    final_volume,
+                    "reducing_agent"
+                )
+                volumes.update(agent_vols)
+                total_volume_used += agent_vol_used
+            elif "reducing_agent_concentration" in factor_values:
+                # Fall back to normal mode
+                agent_vols, agent_vol_used = VolumeCalculator._calculate_categorical_volumes(
+                    agent_type,
+                    factor_values.get("reducing_agent_concentration", 0),
+                    stock_concentrations.get("reducing_agent_concentration", 0),
+                    final_volume,
+                    "reducing_agent"
+                )
+                volumes.update(agent_vols)
+                total_volume_used += agent_vol_used
 
         # Calculate volumes for other factors
         for factor_name, desired_conc in factor_values.items():
@@ -223,6 +259,47 @@ class VolumeCalculator:
                 concentration, stock_concentration, final_volume
             )
             volumes[f"{factor_prefix}_{normalized_value}"] = volume
+            total_volume = volume
+
+        return volumes, total_volume
+
+    @staticmethod
+    def _calculate_categorical_volumes_per_level(
+        categorical_value: str,
+        stock_concentration: float,
+        final_concentration: float,
+        final_volume: float,
+        factor_prefix: str
+    ) -> Tuple[Dict[str, float], float]:
+        """
+        Calculate volumes for categorical factors using per-level stock/final concentrations.
+
+        Args:
+            categorical_value: Value of the categorical factor (e.g., "DDM")
+            stock_concentration: Stock concentration for this specific level
+            final_concentration: Final concentration for this specific level
+            final_volume: Final volume
+            factor_prefix: Prefix for volume key (e.g., "detergent")
+
+        Returns:
+            Tuple of (volumes_dict, total_volume_used)
+        """
+        volumes = {}
+        total_volume = 0.0
+
+        # Normalize the categorical value
+        normalized_value = VolumeCalculator._normalize_factor_name(categorical_value)
+
+        # Check if this is a "None" value
+        is_none = VolumeCalculator._is_none_value(categorical_value)
+
+        if is_none or final_concentration == 0:
+            volumes[normalized_value] = 0.0
+        else:
+            volume = VolumeCalculator._calculate_component_volume(
+                final_concentration, stock_concentration, final_volume
+            )
+            volumes[normalized_value] = volume
             total_volume = volume
 
         return volumes, total_volume

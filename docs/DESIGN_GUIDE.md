@@ -1,17 +1,18 @@
 # Experimental Design Types Guide
 
-This guide explains the 6 design types available in the Protein Stability DoE Designer and when to use each one.
+This guide explains the 7 design types available in the Protein Stability DoE Designer and when to use each one.
 
 ---
 
 ## Overview
 
-The Designer supports 6 experimental design types:
+The Designer supports 7 experimental design types:
 
 | Design Type | Best For | Sample Size | Factors |
 |-------------|----------|-------------|---------|
 | **Full Factorial** | Complete exploration | All combinations | 2-4 factors |
 | **Latin Hypercube (LHS)** | Large factor spaces | User-defined | 3+ factors |
+| **D-Optimal** | Model-optimized with exact run count | User-defined | 2+ factors |
 | **Fractional Factorial** | Efficient screening | 2^(k-p) runs | 4+ factors (2 levels) |
 | **Plackett-Burman** | Ultra-efficient screening | N+1 runs | 5+ factors |
 | **Central Composite (CCD)** | Response surface optimization | 2^k + 2k + cp | 2-5 numeric factors |
@@ -104,7 +105,75 @@ Tests **all possible combinations** of factor levels. The gold standard for comp
 
 ---
 
-## 3. 2-Level Fractional Factorial
+## 3. D-Optimal Design
+
+### Description
+**Model-optimized design** that strategically places experimental points to minimize the variance of parameter estimates for a specific model. Uses Fedorov's exchange algorithm to maximize the determinant of the information matrix (X'X).
+
+### When to Use
+- **Need exact run count** (e.g., "I have exactly 24 wells")
+- **Constrained factor spaces** where some combinations are invalid
+- **Augmenting existing data** with optimal new runs
+- **Any number of factors** (2+)
+- **Know which model you want to fit** (linear, interactions, quadratic)
+
+### Parameters
+- **Sample Size**: Exact number of experiments desired
+- **Model Type**: Type of model to optimize for:
+  - **Linear**: Main effects only (intercept + k factors)
+  - **Interactions**: Main effects + 2-way interactions
+  - **Quadratic**: Full second-order model (main + interactions + squared terms)
+
+### Example
+**Factors:**
+- NaCl: [100, 200, 300, 400] mM (4 levels)
+- Glycerol: [0, 5, 10, 15, 20]% (5 levels)
+- pH: [6.0, 7.0, 8.0, 9.0] (4 levels)
+
+**Full factorial would be:** 4 × 5 × 4 = **80 runs** ❌
+
+**D-Optimal with 24 samples (quadratic model):** **24 runs** ✓
+- Algorithm selects the 24 best points from the 80 candidates
+- Points placed strategically at corners, edges, and center
+
+### Minimum Runs Required
+
+| Model Type | Formula | 3 Factors | 4 Factors |
+|------------|---------|-----------|-----------|
+| Linear | k + 1 | 4 | 5 |
+| Interactions | k + (k choose 2) + 1 | 7 | 11 |
+| Quadratic | 2k + (k choose 2) + 1 | 10 | 15 |
+
+### Pros
+✓ Exact sample size control (fits your plate layout)
+✓ Optimal for specific model (minimizes parameter variance)
+✓ Works with constrained factor spaces
+✓ Supports mixed categorical/numeric factors
+✓ No external libraries required (uses numpy only)
+
+### Cons
+✗ Design is model-specific (need to choose upfront)
+✗ Algorithm may find local optima
+✗ More complex to interpret than standard designs
+✗ Less intuitive point placement
+
+### LHS vs D-Optimal
+
+| Aspect | LHS | D-Optimal |
+|--------|-----|-----------|
+| **Goal** | Space-filling | Model-optimized |
+| **Point placement** | Evenly distributed | Strategic (corners, edges, center) |
+| **Best for** | Exploration, unknown model | Fitting specific model |
+| **Constraint handling** | Limited | Built-in support |
+
+### Use Case
+> "I have 3 factors and want to fit a quadratic model with exactly 15 runs. I need the points placed optimally for estimating the quadratic coefficients."
+
+> "Some of my factor combinations are invalid (e.g., certain pH + buffer type). I need a design that respects these constraints while minimizing runs."
+
+---
+
+## 4. 2-Level Fractional Factorial
 
 ### Description
 Uses a **fraction** of the full factorial design by confounding higher-order interactions. Assumes some interactions are negligible.
@@ -150,7 +219,7 @@ Uses a **fraction** of the full factorial design by confounding higher-order int
 
 ---
 
-## 4. Plackett-Burman Design
+## 5. Plackett-Burman Design
 
 ### Description
 **Ultra-efficient screening** design for identifying important factors from many candidates. Uses orthogonal arrays.
@@ -189,7 +258,7 @@ For **n factors**, uses **n+1 runs** (minimum)
 
 ---
 
-## 5. Central Composite Design (CCD)
+## 6. Central Composite Design (CCD)
 
 ### Description
 **Response surface design** for optimization. Combines factorial points, axial (star) points, and center points.
@@ -238,7 +307,7 @@ For **n factors**, uses **n+1 runs** (minimum)
 
 ---
 
-## 6. Box-Behnken Design
+## 7. Box-Behnken Design
 
 ### Description
 **Response surface design** that avoids extreme corners. Uses mid-points of edges instead.
@@ -291,6 +360,11 @@ For **n factors**, uses **n+1 runs** (minimum)
 ```
 START
 │
+├─ Need exact sample size (e.g., 24 runs)?
+│  └─ YES → Do you know the model you want to fit?
+│           ├─ YES → D-Optimal Design (choose model type)
+│           └─ NO → LHS (space-filling)
+│
 ├─ Screening phase (identify important factors)?
 │  ├─ YES → How many factors?
 │  │        ├─ 4-7 factors → Fractional Factorial (Resolution IV)
@@ -298,6 +372,8 @@ START
 │  │        └─ 5+ factors, need flexibility → LHS (96 samples)
 │  │
 │  └─ NO → Optimization phase (find best conditions)?
+│           ├─ Have constraints on factor combinations?
+│           │   └─ YES → D-Optimal Design (handles constraints)
 │           ├─ Can test extreme combinations?
 │           │   ├─ YES → Central Composite Design (CCD)
 │           │   └─ NO → Box-Behnken Design

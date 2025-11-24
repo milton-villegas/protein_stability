@@ -18,6 +18,7 @@ class TestDoEProjectInit:
         assert project.modified_date is not None
         assert project._factors == {}
         assert project._stock_concs == {}
+        assert project._per_level_concs == {}
         assert project.design_matrix is None
         assert project.results_data is None
         assert project.clean_data is None
@@ -515,3 +516,164 @@ class TestDoEProjectIntegration:
         assert loaded.response_column == 'Response'
         assert 'pH' in loaded.numeric_factors
         assert 'Buffer' in loaded.categorical_factors
+
+
+class TestDoEProjectPerLevelConcentrations:
+    """Test per-level concentration functionality for categorical factors"""
+
+    def test_set_per_level_concs(self):
+        """Test setting per-level concentrations for a factor"""
+        project = DoEProject()
+        project.add_factor("detergent", ["DDM", "LMNG", "OG"])
+
+        per_level = {
+            "DDM": {"stock": 0.2, "final": 0.006},
+            "LMNG": {"stock": 0.01, "final": 0.0007},
+            "OG": {"stock": 10.0, "final": 0.37}
+        }
+        project.set_per_level_concs("detergent", per_level)
+
+        result = project.get_per_level_concs("detergent")
+        assert result is not None
+        assert "DDM" in result
+        assert result["DDM"]["stock"] == 0.2
+        assert result["DDM"]["final"] == 0.006
+
+    def test_has_per_level_concs_true(self):
+        """Test has_per_level_concs returns True when configured"""
+        project = DoEProject()
+        project.set_per_level_concs("detergent", {"DDM": {"stock": 0.2, "final": 0.006}})
+
+        assert project.has_per_level_concs("detergent") is True
+
+    def test_has_per_level_concs_false(self):
+        """Test has_per_level_concs returns False when not configured"""
+        project = DoEProject()
+
+        assert project.has_per_level_concs("detergent") is False
+
+    def test_has_per_level_concs_empty(self):
+        """Test has_per_level_concs returns False for empty dict"""
+        project = DoEProject()
+        project.set_per_level_concs("detergent", {})
+
+        assert project.has_per_level_concs("detergent") is False
+
+    def test_get_level_conc_stock(self):
+        """Test getting stock concentration for specific level"""
+        project = DoEProject()
+        project.set_per_level_concs("detergent", {
+            "DDM": {"stock": 0.2, "final": 0.006}
+        })
+
+        stock = project.get_level_conc("detergent", "DDM", "stock")
+        assert stock == 0.2
+
+    def test_get_level_conc_final(self):
+        """Test getting final concentration for specific level"""
+        project = DoEProject()
+        project.set_per_level_concs("detergent", {
+            "DDM": {"stock": 0.2, "final": 0.006}
+        })
+
+        final = project.get_level_conc("detergent", "DDM", "final")
+        assert final == 0.006
+
+    def test_get_level_conc_nonexistent_factor(self):
+        """Test get_level_conc returns None for non-existent factor"""
+        project = DoEProject()
+
+        result = project.get_level_conc("nonexistent", "DDM", "stock")
+        assert result is None
+
+    def test_get_level_conc_nonexistent_level(self):
+        """Test get_level_conc returns None for non-existent level"""
+        project = DoEProject()
+        project.set_per_level_concs("detergent", {
+            "DDM": {"stock": 0.2, "final": 0.006}
+        })
+
+        result = project.get_level_conc("detergent", "LMNG", "stock")
+        assert result is None
+
+    def test_clear_per_level_concs(self):
+        """Test clearing per-level concentrations for a factor"""
+        project = DoEProject()
+        project.set_per_level_concs("detergent", {
+            "DDM": {"stock": 0.2, "final": 0.006}
+        })
+
+        project.clear_per_level_concs("detergent")
+
+        assert project.has_per_level_concs("detergent") is False
+
+    def test_clear_per_level_concs_nonexistent(self):
+        """Test clearing non-existent per-level concentrations doesn't error"""
+        project = DoEProject()
+
+        # Should not raise error
+        project.clear_per_level_concs("nonexistent")
+
+    def test_get_all_per_level_concs(self):
+        """Test getting all per-level concentrations"""
+        project = DoEProject()
+        project.set_per_level_concs("detergent", {
+            "DDM": {"stock": 0.2, "final": 0.006}
+        })
+        project.set_per_level_concs("reducing_agent", {
+            "DTT": {"stock": 1000, "final": 5}
+        })
+
+        all_concs = project.get_all_per_level_concs()
+
+        assert "detergent" in all_concs
+        assert "reducing_agent" in all_concs
+        assert all_concs["detergent"]["DDM"]["stock"] == 0.2
+        assert all_concs["reducing_agent"]["DTT"]["stock"] == 1000
+
+    def test_remove_factor_clears_per_level_concs(self):
+        """Test that removing a factor also clears its per-level concentrations"""
+        project = DoEProject()
+        project.add_factor("detergent", ["DDM", "LMNG"])
+        project.set_per_level_concs("detergent", {
+            "DDM": {"stock": 0.2, "final": 0.006}
+        })
+
+        project.remove_factor("detergent")
+
+        assert project.has_per_level_concs("detergent") is False
+
+    def test_clear_factors_clears_per_level_concs(self):
+        """Test that clear_factors also clears per-level concentrations"""
+        project = DoEProject()
+        project.add_factor("detergent", ["DDM", "LMNG"])
+        project.set_per_level_concs("detergent", {
+            "DDM": {"stock": 0.2, "final": 0.006}
+        })
+
+        project.clear_factors()
+
+        assert project.get_all_per_level_concs() == {}
+
+    def test_save_load_preserves_per_level_concs(self, tmp_path):
+        """Test that save/load preserves per-level concentrations"""
+        project = DoEProject()
+        project.add_factor("detergent", ["DDM", "LMNG", "OG"])
+        project.set_per_level_concs("detergent", {
+            "DDM": {"stock": 0.2, "final": 0.006},
+            "LMNG": {"stock": 0.01, "final": 0.0007},
+            "OG": {"stock": 10.0, "final": 0.37}
+        })
+
+        # Save
+        save_path = tmp_path / "project.pkl"
+        project.save(str(save_path))
+
+        # Load
+        loaded = DoEProject.load(str(save_path))
+
+        # Verify per-level concs preserved
+        assert loaded.has_per_level_concs("detergent") is True
+        assert loaded.get_level_conc("detergent", "DDM", "stock") == 0.2
+        assert loaded.get_level_conc("detergent", "LMNG", "final") == 0.0007
+        assert loaded.get_level_conc("detergent", "OG", "stock") == 10.0

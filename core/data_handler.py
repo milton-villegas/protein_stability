@@ -19,6 +19,7 @@ class DataHandler:
         self.response_column = None  # Kept for backward compatibility
         self.response_columns = []  # New: support multiple responses
         self.stock_concentrations = {}  # Store stock concentrations from metadata
+        self.per_level_concs = {}  # Store per-level concentrations: factor → level → {stock, final}
 
     def load_excel(self, filepath: str):
         """Load data from Excel file"""
@@ -28,39 +29,76 @@ class DataHandler:
         self._load_stock_concentrations(filepath)
 
     def _load_stock_concentrations(self, filepath: str):
-        """Load stock concentrations from Stock_Concentrations sheet if it exists"""
+        """Load stock concentrations and per-level concentrations from Stock_Concentrations sheet (unified format)"""
         try:
-            # Try to read the Stock_Concentrations sheet
+            # Read the sheet with standard pandas (first row is header)
             stock_df = pd.read_excel(filepath, sheet_name="Stock_Concentrations")
 
-            # Parse the stock concentrations with intelligent matching
             self.stock_concentrations = {}
-            for _, row in stock_df.iterrows():
-                factor_name = str(row['Factor Name']).strip()
-                stock_value_raw = row['Stock Value']
+            self.per_level_concs = {}
 
-                # Skip rows with None or NaN values
-                if pd.isna(stock_value_raw):
+            # Iterate through all rows
+            for _, row in stock_df.iterrows():
+                factor_name = str(row['Factor Name']).strip() if not pd.isna(row['Factor Name']) else ""
+                level = str(row['Level']).strip() if not pd.isna(row['Level']) else ""
+                stock_value = row['Stock Value']
+                final_value = row.get('Final Value', None)  # May not exist in old files
+
+                # Skip empty rows or special rows (protein, separators)
+                if not factor_name or pd.isna(stock_value):
                     continue
 
-                stock_value = float(stock_value_raw)
+                # Skip protein row (handled separately, added manually)
+                if 'protein' in factor_name.lower():
+                    continue
 
-                # Smart matching algorithm - convert display name to internal key
+                # Convert display name to internal name
                 internal_name = smart_factor_match(factor_name)
+                if not internal_name:
+                    continue
 
-                if internal_name:
-                    self.stock_concentrations[internal_name] = stock_value
+                # Check if this is a per-level concentration (Level column is filled)
+                if level:
+                    # Per-level concentration: Factor Name | Level | Stock | Final | Unit
+                    if not pd.isna(final_value):
+                        # Determine the categorical factor name (detergent or reducing_agent)
+                        if "detergent" in internal_name:
+                            cat_factor = "detergent"
+                        elif "reducing" in internal_name or "agent" in internal_name:
+                            cat_factor = "reducing_agent"
+                        else:
+                            continue
 
-            print(f"✓ Loaded stock concentrations from metadata: {self.stock_concentrations}")
+                        # Initialize dict if needed
+                        if cat_factor not in self.per_level_concs:
+                            self.per_level_concs[cat_factor] = {}
+
+                        # Store per-level concentration
+                        self.per_level_concs[cat_factor][level] = {
+                            "stock": float(stock_value),
+                            "final": float(final_value)
+                        }
+                else:
+                    # Normal factor: Factor Name | (empty) | Stock | (empty) | Unit
+                    self.stock_concentrations[internal_name] = float(stock_value)
+
+            print(f"✓ Loaded stock concentrations: {self.stock_concentrations}")
+            if self.per_level_concs:
+                print(f"✓ Loaded per-level concentrations: {list(self.per_level_concs.keys())}")
 
         except Exception as e:
             # Sheet doesn't exist or error reading - that's okay, will use dialog
             print(f"ℹ️  Note: Stock concentrations sheet not found or error reading ({e})")
             self.stock_concentrations = {}
+            self.per_level_concs = {}
 
     def get_stock_concentrations(self) -> dict:
         """Get stock concentrations (either from metadata or empty dict)"""
         return self.stock_concentrations.copy()
+
+    def get_per_level_concs(self) -> dict:
+        """Get per-level concentrations (either from metadata or empty dict)"""
+        return self.per_level_concs.copy()
 
     def get_potential_response_columns(self):
         """Get list of numeric columns that could be responses (excluding metadata and detected factors)
