@@ -7,7 +7,7 @@ interactive elements in the experiment designer interface.
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 
 from utils.constants import AVAILABLE_FACTORS
 from .models import (
@@ -32,7 +32,9 @@ class FactorEditDialog(tk.Toplevel):
     """
 
     def __init__(self, parent, factor_name: str, existing_levels: List[str] = None,
-                 stock_conc: Optional[float] = None):
+                 stock_conc: Optional[float] = None,
+                 per_level_concs: Optional[Dict[str, Dict[str, float]]] = None,
+                 parent_model=None):
         """
         Initialize the factor edit dialog.
 
@@ -41,19 +43,26 @@ class FactorEditDialog(tk.Toplevel):
             factor_name: The internal name of the factor to edit.
             existing_levels: Optional list of existing level values to populate.
             stock_conc: Optional existing stock concentration value.
+            per_level_concs: Optional per-level concentrations for concentration factors.
+            parent_model: Optional reference to the FactorModel for looking up related factors.
         """
         super().__init__(parent)
 
         display_name = AVAILABLE_FACTORS.get(factor_name, factor_name)
 
         self.title(f"Edit Factor: {display_name}")
-        self.geometry("550x600")
+        self.geometry("550x700")  # Taller for per-level controls
         self.transient(parent)
         self.grab_set()
 
         self.factor_name = factor_name
+        self.parent_model = parent_model  # Reference to look up categorical factor levels
         self.result_levels = None
         self.result_stock = None
+        self.result_per_level_concs = None  # For concentration factors with per-level concentrations
+
+        # Store per-level concentrations
+        self._per_level_concs = dict(per_level_concs) if per_level_concs else {}
 
         # Store entry widgets for key binding
         self.stock_entry_widget = None
@@ -80,10 +89,34 @@ class FactorEditDialog(tk.Toplevel):
         ttk.Label(info_frame, text=f"Factor: {display_name}",
                  font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
 
-        # Stock concentration
+        # Per-level concentration option for concentration factors
+        self.is_concentration_factor = factor_name in ["detergent_concentration", "reducing_agent_concentration"]
+        self.use_per_level_var = tk.BooleanVar(value=bool(self._per_level_concs))
+
+        if self.is_concentration_factor:
+            # Determine the related categorical factor
+            self.categorical_factor = "detergent" if factor_name == "detergent_concentration" else "reducing_agent"
+            cat_display = "detergent" if self.categorical_factor == "detergent" else "reducing agent"
+
+            per_level_check_frame = ttk.Frame(info_frame)
+            per_level_check_frame.pack(fill=tk.X, pady=(8, 0))
+
+            self.per_level_checkbox = ttk.Checkbutton(
+                per_level_check_frame,
+                text=f"Each {cat_display} has its own fixed concentration",
+                variable=self.use_per_level_var,
+                command=self._toggle_concentration_mode
+            )
+            self.per_level_checkbox.pack(anchor="w")
+
+        # Container for normal mode (stock + levels)
+        self.normal_mode_frame = ttk.Frame(main_frame)
+        self.normal_mode_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Stock concentration (inside normal_mode_frame)
         if factor_name not in ["buffer pH", "detergent", "reducing_agent"]:  # Categorical factors don't need stock
-            stock_frame = ttk.LabelFrame(info_frame, text="Stock Concentration (required)", padding=8)
-            stock_frame.pack(fill=tk.X, pady=(8, 0))
+            stock_frame = ttk.LabelFrame(self.normal_mode_frame, text="Stock Concentration (required)", padding=8)
+            stock_frame.pack(fill=tk.X, pady=(0, 8))
 
             # Concentration entry and unit dropdown
             entry_frame = ttk.Frame(stock_frame)
@@ -106,8 +139,8 @@ class FactorEditDialog(tk.Toplevel):
                                         values=unit_options, state="readonly", width=8)
             unit_dropdown.pack(side=tk.LEFT)
 
-        # Levels editor
-        levels_frame = ttk.LabelFrame(main_frame, text="Levels", padding=8)
+        # Levels editor (inside normal_mode_frame)
+        levels_frame = ttk.LabelFrame(self.normal_mode_frame, text="Levels", padding=8)
         levels_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
         # Hints - different for categorical vs numeric factors
@@ -170,9 +203,41 @@ class FactorEditDialog(tk.Toplevel):
         ttk.Button(btn_frame, text="Clear All",
                   command=self._clear_levels).pack(side=tk.LEFT, padx=2)
 
-        # Generate sequence
-        seq_frame = ttk.LabelFrame(main_frame, text="Generate Sequence", padding=8)
+        # Generate sequence (inside normal_mode_frame)
+        seq_frame = ttk.LabelFrame(self.normal_mode_frame, text="Generate Sequence", padding=8)
         seq_frame.pack(fill=tk.X, pady=(0, 8))
+        self.seq_frame = seq_frame  # Store reference
+
+        # Per-level mode frame (for concentration factors)
+        self.per_level_mode_frame = ttk.LabelFrame(main_frame, text="Per-Level Concentrations", padding=8)
+        self.per_level_entries = {}  # Store entry widgets: level → {"stock": StringVar, "final": StringVar}
+
+        if self.is_concentration_factor:
+            # Add content to per-level mode frame
+            cat_display = "detergent" if self.categorical_factor == "detergent" else "reducing agent"
+            cat_display_title = "Detergent" if self.categorical_factor == "detergent" else "Reducing Agent"
+
+            info_label = ttk.Label(self.per_level_mode_frame,
+                                  text=f"Configure stock and final concentration for each {cat_display}.\n"
+                                       f"The '{cat_display_title}' factor must be added first.",
+                                  foreground="gray", font=("TkDefaultFont", 9, "italic"))
+            info_label.pack(anchor="w", pady=(0, 10))
+
+            # Create scrollable frame for inline concentration table
+            self.per_level_canvas_frame = ttk.Frame(self.per_level_mode_frame)
+            self.per_level_canvas_frame.pack(fill=tk.BOTH, expand=True)
+
+            # We'll populate this dynamically in _populate_per_level_table()
+
+            # Hint
+            hint_frame = ttk.Frame(self.per_level_mode_frame)
+            hint_frame.pack(fill=tk.X, pady=(10, 0))
+            ttk.Label(hint_frame,
+                     text="Volume calculated: V = (Final × Total) / Stock",
+                     foreground="gray", font=("TkDefaultFont", 9, "italic")).pack(anchor="w")
+
+            # Apply initial toggle state
+            self._toggle_concentration_mode()
 
         seq_input_frame = ttk.Frame(seq_frame)
         seq_input_frame.pack(fill=tk.X)
@@ -377,6 +442,122 @@ class FactorEditDialog(tk.Toplevel):
         """
         self._save()
 
+    def _toggle_concentration_mode(self):
+        """Toggle between normal mode (levels + stock) and per-level mode for concentration factors."""
+        if not self.is_concentration_factor:
+            return
+
+        if self.use_per_level_var.get():
+            # Per-level mode: hide normal controls, show per-level frame
+            self.normal_mode_frame.pack_forget()
+            self.per_level_mode_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+            # Populate the inline concentration table
+            self._populate_per_level_table()
+        else:
+            # Normal mode: show normal controls, hide per-level frame
+            self.per_level_mode_frame.pack_forget()
+            self.normal_mode_frame.pack(fill=tk.BOTH, expand=True)
+            # Clear per-level concentrations when switching to normal mode
+            self._per_level_concs = {}
+            self.per_level_entries = {}
+
+    def _populate_per_level_table(self):
+        """Populate the inline concentration table with fields for each level."""
+        # Clear existing widgets in the canvas frame
+        for widget in self.per_level_canvas_frame.winfo_children():
+            widget.destroy()
+        self.per_level_entries = {}
+
+        # Get levels from the related categorical factor
+        if not self.parent_model:
+            return
+
+        factors = self.parent_model.get_factors()
+        if self.categorical_factor not in factors:
+            # Show warning label
+            ttk.Label(self.per_level_canvas_frame,
+                     text=f"⚠ Please add the '{self.categorical_factor.replace('_', ' ').title()}' factor first",
+                     foreground="orange").pack(pady=20)
+            return
+
+        levels = factors[self.categorical_factor]
+        if not levels:
+            ttk.Label(self.per_level_canvas_frame,
+                     text="No levels defined in the categorical factor",
+                     foreground="gray").pack(pady=20)
+            return
+
+        # Filter out None/empty levels
+        active_levels = [l for l in levels if str(l).lower() not in ['none', '0', 'nan', '']]
+
+        if not active_levels:
+            ttk.Label(self.per_level_canvas_frame,
+                     text="All levels are 'None' or empty. No concentrations needed.",
+                     foreground="gray").pack(pady=20)
+            return
+
+        # Determine unit
+        unit = "%" if self.factor_name == "detergent_concentration" else "mM"
+
+        # Validation command for numeric input
+        vcmd = (self.register(validate_single_numeric_input), '%d', '%S', '%P')
+
+        # Create scrollable canvas
+        canvas = tk.Canvas(self.per_level_canvas_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.per_level_canvas_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Header row
+        header_frame = ttk.Frame(scrollable_frame)
+        header_frame.pack(fill=tk.X, pady=(0, 5))
+
+        ttk.Label(header_frame, text="Level", font=("TkDefaultFont", 10, "bold"),
+                 width=15, anchor="w").pack(side=tk.LEFT, padx=5)
+        ttk.Label(header_frame, text=f"Stock ({unit})", font=("TkDefaultFont", 10, "bold"),
+                 width=12, anchor="center").pack(side=tk.LEFT, padx=5)
+        ttk.Label(header_frame, text=f"Final ({unit})", font=("TkDefaultFont", 10, "bold"),
+                 width=12, anchor="center").pack(side=tk.LEFT, padx=5)
+
+        ttk.Separator(scrollable_frame, orient="horizontal").pack(fill=tk.X, pady=5)
+
+        # Create row for each level
+        for level in active_levels:
+            row_frame = ttk.Frame(scrollable_frame)
+            row_frame.pack(fill=tk.X, pady=2)
+
+            ttk.Label(row_frame, text=level, width=15, anchor="w").pack(side=tk.LEFT, padx=5)
+
+            stock_var = tk.StringVar()
+            stock_entry = ttk.Entry(row_frame, textvariable=stock_var, width=12,
+                                   validate='key', validatecommand=vcmd)
+            stock_entry.pack(side=tk.LEFT, padx=5)
+
+            final_var = tk.StringVar()
+            final_entry = ttk.Entry(row_frame, textvariable=final_var, width=12,
+                                   validate='key', validatecommand=vcmd)
+            final_entry.pack(side=tk.LEFT, padx=5)
+
+            self.per_level_entries[level] = {"stock": stock_var, "final": final_var}
+
+            # Populate existing values
+            if level in self._per_level_concs:
+                level_data = self._per_level_concs[level]
+                if "stock" in level_data:
+                    stock_var.set(str(level_data["stock"]))
+                if "final" in level_data:
+                    final_var.set(str(level_data["final"]))
+
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
     def _parse_numeric_value(self, value_str: str) -> Optional[float]:
         """
         Parse a numeric value from string.
@@ -439,7 +620,66 @@ class FactorEditDialog(tk.Toplevel):
 
         Sets result_levels and result_stock before destroying the dialog.
         """
-        # Get levels
+        # Handle per-level mode for concentration factors
+        if self.is_concentration_factor and self.use_per_level_var.get():
+            # Read concentrations from inline entries
+            result = {}
+
+            for level, vars_dict in self.per_level_entries.items():
+                stock_str = vars_dict["stock"].get().strip()
+                final_str = vars_dict["final"].get().strip()
+
+                # Skip levels with no concentrations (e.g., "None" detergent)
+                if not stock_str and not final_str:
+                    continue
+
+                # Validate both are provided if one is
+                if stock_str and not final_str:
+                    messagebox.showerror("Missing Value",
+                        f"Level '{level}': Final concentration is required when stock is provided.")
+                    return
+                if final_str and not stock_str:
+                    messagebox.showerror("Missing Value",
+                        f"Level '{level}': Stock concentration is required when final is provided.")
+                    return
+
+                try:
+                    stock = float(stock_str)
+                    final = float(final_str)
+
+                    if stock <= 0:
+                        messagebox.showerror("Invalid Value",
+                            f"Level '{level}': Stock concentration must be positive.")
+                        return
+                    if final < 0:
+                        messagebox.showerror("Invalid Value",
+                            f"Level '{level}': Final concentration cannot be negative.")
+                        return
+                    if final > stock:
+                        messagebox.showerror("Invalid Value",
+                            f"Level '{level}': Final concentration ({final}) cannot exceed stock ({stock}).")
+                        return
+
+                    result[level] = {"stock": stock, "final": final}
+
+                except ValueError:
+                    messagebox.showerror("Invalid Value",
+                        f"Level '{level}': Please enter valid numeric values.")
+                    return
+
+            if not result:
+                messagebox.showerror("No Concentrations Configured",
+                    "Please enter stock and final concentrations for at least one level.")
+                return
+
+            # Set dummy values for levels (not used in per-level mode)
+            self.result_levels = ["per-level"]  # Placeholder
+            self.result_stock = None
+            self.result_per_level_concs = result
+            self.destroy()
+            return
+
+        # Normal mode: Get levels
         levels = list(self.levels_listbox.get(0, tk.END))
         if not levels:
             messagebox.showerror("No Levels", "Please add at least one level.")
@@ -515,4 +755,9 @@ class FactorEditDialog(tk.Toplevel):
 
         self.result_levels = levels
         self.result_stock = stock
+
+        # For concentration factors in normal mode, no per-level concentrations
+        if self.is_concentration_factor:
+            self.result_per_level_concs = None
+
         self.destroy()

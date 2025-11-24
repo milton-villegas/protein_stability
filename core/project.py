@@ -23,6 +23,8 @@ class DoEProject:
         # Design parameters (from FactorModel)
         self._factors: Dict[str, List[str]] = {}  # factor_name → levels
         self._stock_concs: Dict[str, float] = {}  # factor_name → stock concentration
+        # Per-level concentrations: factor_name → level → {"stock": float, "final": float}
+        self._per_level_concs: Dict[str, Dict[str, Dict[str, float]]] = {}
         self.design_matrix: Optional[pd.DataFrame] = None  # Generated design
 
         # Analysis data (from DataHandler)
@@ -66,6 +68,8 @@ class DoEProject:
             del self._factors[name]
         if name in self._stock_concs:
             del self._stock_concs[name]
+        if name in self._per_level_concs:
+            del self._per_level_concs[name]
 
     def get_factors(self) -> Dict[str, List[str]]:
         """Get all factors"""
@@ -79,10 +83,59 @@ class DoEProject:
         """Get all stock concentrations"""
         return dict(self._stock_concs)
 
+    # ========== Per-Level Concentration Management ==========
+
+    def set_per_level_concs(self, factor_name: str, level_concs: Dict[str, Dict[str, float]]):
+        """
+        Set per-level concentrations for a categorical factor.
+
+        Args:
+            factor_name: Name of the categorical factor (e.g., "detergent")
+            level_concs: Dict mapping level → {"stock": float, "final": float}
+                        Example: {"DDM": {"stock": 0.2, "final": 0.00609}}
+        """
+        self._per_level_concs[factor_name] = level_concs
+
+    def get_per_level_concs(self, factor_name: str) -> Optional[Dict[str, Dict[str, float]]]:
+        """Get per-level concentrations for a factor, or None if not set."""
+        return self._per_level_concs.get(factor_name)
+
+    def has_per_level_concs(self, factor_name: str) -> bool:
+        """Check if factor has per-level concentrations defined."""
+        return factor_name in self._per_level_concs and bool(self._per_level_concs[factor_name])
+
+    def get_level_conc(self, factor_name: str, level: str, conc_type: str = "stock") -> Optional[float]:
+        """
+        Get stock or final concentration for a specific level.
+
+        Args:
+            factor_name: Name of the factor
+            level: The level value (e.g., "DDM")
+            conc_type: "stock" or "final"
+
+        Returns:
+            Concentration value or None if not found
+        """
+        if factor_name in self._per_level_concs:
+            level_data = self._per_level_concs[factor_name].get(str(level))
+            if level_data:
+                return level_data.get(conc_type)
+        return None
+
+    def clear_per_level_concs(self, factor_name: str):
+        """Clear per-level concentrations for a factor."""
+        if factor_name in self._per_level_concs:
+            del self._per_level_concs[factor_name]
+
+    def get_all_per_level_concs(self) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """Get all per-level concentrations."""
+        return dict(self._per_level_concs)
+
     def clear_factors(self):
         """Clear all factors"""
         self._factors.clear()
         self._stock_concs.clear()
+        self._per_level_concs.clear()
         self.design_matrix = None
 
     # ========== Analysis Data Management (from DataHandler) ==========

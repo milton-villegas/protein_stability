@@ -267,6 +267,8 @@ class TestBayesianOptimizerIntegration:
         # Mock the AxClient to avoid actual Bayesian optimization
         with patch('core.optimizer.AxClient') as mock_ax_class:
             mock_ax_instance = Mock()
+            mock_ax_instance.attach_trial.return_value = (None, 0)  # Return tuple (arm, trial_index)
+            mock_ax_instance.complete_trial.return_value = None
             mock_ax_class.return_value = mock_ax_instance
 
             # This should create parameters and initialize without errors
@@ -296,6 +298,9 @@ class TestBayesianOptimizerSuggestions:
             {'pH': 7.5, 'NaCl': 150.0},
             1  # trial_index
         )
+        # Mock get_model_predictions to return proper structure: ({metric: {trial: (mean, sem)}}, cov)
+        mock_ax.get_model_predictions.return_value = ({}, {})
+        mock_ax.abandon_trial.return_value = None
         optimizer.ax_client = mock_ax
 
         # Get suggestions

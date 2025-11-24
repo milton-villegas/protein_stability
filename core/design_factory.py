@@ -332,8 +332,47 @@ class DesignFactory:
                     f"Factor '{fn}' has {len(factors[fn])} levels."
                 )
 
-        # Build generator string
-        gen_string = f"{n_factors}-{resolution}"
+        # Build generator string for pyDOE3
+        # pyDOE3 expects format like "a b c abc" (letters for generators)
+        import string
+
+        # Standard fractional factorial generators by number of factors and resolution
+        # Format: generators[n_factors][resolution] = generator_string
+        generators = {
+            3: {
+                'III': 'a b ab',  # 2^(3-1) design, 4 runs
+            },
+            4: {
+                'III': 'a b ab c',  # 2^(4-1) design, 8 runs, resolution III
+                'IV': 'a b c abc',  # 2^(4-1) design, 8 runs, resolution IV
+                'V': 'a b c d',     # 2^4 full factorial, 16 runs (can't fractionate 4 factors to res V)
+            },
+            5: {
+                'III': 'a b ab c ac',  # 2^(5-2) design, 8 runs
+                'IV': 'a b c abc d',    # 2^(5-1) design, 16 runs
+                'V': 'a b c d abcd',    # 2^(5-1) design, 16 runs, resolution V
+            },
+            6: {
+                'III': 'a b ab c ac bc',  # 2^(6-3) design, 8 runs
+                'IV': 'a b c abc d abd',   # 2^(6-2) design, 16 runs
+                'V': 'a b c d e abcde',    # 2^(6-1) design, 32 runs
+            },
+            7: {
+                'III': 'a b ab c ac bc abc',  # 2^(7-4) design, 8 runs
+                'IV': 'a b c abc d bcd e',     # 2^(7-3) design, 16 runs
+                'V': 'a b c d e abcd f',       # 2^(7-2) design, 32 runs
+            }
+        }
+
+        # Get generator string or fall back to full factorial
+        if n_factors in generators and resolution in generators[n_factors]:
+            gen_string = generators[n_factors][resolution]
+        else:
+            # Fall back to full factorial if no generator available
+            base_factors = list(string.ascii_lowercase[:n_factors])
+            gen_string = " ".join(base_factors)
+            print(f"Warning: No fractional factorial generator for {n_factors} factors at resolution {resolution}. Using full factorial.")
+
         design = pyDOE3.fracfact(gen_string)
 
         # Map from [-1, 1] to actual levels
