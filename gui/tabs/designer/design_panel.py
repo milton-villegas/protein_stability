@@ -626,3 +626,45 @@ class DesignPanelMixin:
         else:
             # No categorical factors, return numeric combinations in order
             return [tuple(combo) for combo in numeric_combinations]
+
+    def _generate_d_optimal_design(self, factors: Dict[str, List[str]], n_samples: int, model_type: str) -> List[Tuple]:
+        """Generate D-optimal design using Fedorov's exchange algorithm.
+
+        D-optimal designs minimize the covariance of parameter estimates by
+        maximizing the determinant of the information matrix (X'X).
+
+        Args:
+            factors: Dictionary of factor names to level lists
+            n_samples: Exact number of experimental runs desired
+            model_type: Type of model to optimize for:
+                - "linear": Main effects only
+                - "interactions": Main effects + 2-way interactions
+                - "quadratic": Full second-order model
+
+        Returns:
+            List of tuples representing combinations
+
+        Raises:
+            ValueError: If n_samples is less than minimum required for model
+        """
+        from core.design_factory import DesignFactory
+
+        # Create factory instance
+        factory = DesignFactory(has_pydoe3=HAS_PYDOE3, has_smt=HAS_SMT)
+
+        # Generate D-optimal design using factory
+        design_points = factory.create_design(
+            "d_optimal",
+            factors,
+            n_samples=n_samples,
+            model_type=model_type
+        )
+
+        # Convert list of dicts to list of tuples (maintaining factor order)
+        factor_names = list(factors.keys())
+        combinations = []
+        for point in design_points:
+            combo = tuple(point[fn] for fn in factor_names)
+            combinations.append(combo)
+
+        return combinations

@@ -228,6 +228,20 @@ class ExportPanelMixin:
             combinations = self._generate_lhs_design(factors, n_samples)
             combinations = self._filter_categorical_combinations(combinations, factor_names)
 
+        elif design_type == "d_optimal":
+            # D-Optimal Design
+            n_samples = self.d_optimal_sample_var.get()
+            model_type = self.d_optimal_model_var.get()
+
+            # Validate sample size
+            if n_samples > 384:
+                raise ValueError("Sample size cannot exceed 384 (4 plates of 96 wells).")
+            if n_samples < 1:
+                raise ValueError("Sample size must be at least 1.")
+
+            combinations = self._generate_d_optimal_design(factors, n_samples, model_type)
+            combinations = self._filter_categorical_combinations(combinations, factor_names)
+
         elif design_type == "fractional":
             # 2-Level Fractional Factorial
             resolution = self.resolution_var.get()
@@ -662,6 +676,9 @@ class ExportPanelMixin:
                     design_name = "Latin Hypercube (Optimized - SMT)"
                 else:
                     design_name = "Latin Hypercube (Standard - pyDOE3)"
+            elif design_type == "d_optimal":
+                model_type = self.d_optimal_model_var.get()
+                design_name = f"D-Optimal Design ({model_type})"
             elif design_type == "fractional":
                 resolution = self.resolution_var.get()
                 design_name = f"2-Level Fractional Factorial (Resolution {resolution})"

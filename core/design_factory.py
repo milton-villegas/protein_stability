@@ -22,6 +22,7 @@ class DesignFactory:
     Supports:
     - Full Factorial
     - Latin Hypercube Sampling (LHS)
+    - D-Optimal
     - Fractional Factorial (2-level)
     - Plackett-Burman
     - Central Composite Design (CCD)
@@ -52,11 +53,12 @@ class DesignFactory:
             design_type: Type of design ("full_factorial", "lhs", etc.)
             factors: Dictionary of factor_name → list of levels
             **params: Design-specific parameters:
-                - n_samples: Number of samples (for LHS)
+                - n_samples: Number of samples (for LHS, D-Optimal)
                 - resolution: Resolution level (for fractional factorial)
                 - ccd_type: CCD type (for central composite)
                 - center_points: Number of center points (for CCD, Box-Behnken)
                 - use_smt: Use SMT for optimized LHS (for LHS)
+                - model_type: Model type for D-Optimal ("linear", "interactions", "quadratic")
 
         Returns:
             List of dictionaries, each representing a design point
@@ -77,6 +79,10 @@ class DesignFactory:
             n_samples = params.get("n_samples", 50)
             use_smt = params.get("use_smt", False)
             return self._generate_lhs(factors, n_samples, use_smt)
+        elif design_type == "d_optimal":
+            n_samples = params.get("n_samples", 20)
+            model_type = params.get("model_type", "quadratic")
+            return self._generate_d_optimal(factors, n_samples, model_type)
         elif design_type == "fractional":
             resolution = params.get("resolution", "IV")
             return self._generate_fractional_factorial(factors, resolution)
@@ -577,3 +583,278 @@ class DesignFactory:
             design_points.append(point)
 
         return design_points
+
+    def _generate_d_optimal(
+        self,
+        factors: Dict[str, List[str]],
+        n_samples: int,
+        model_type: str = "quadratic"
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate D-optimal design using Fedorov's exchange algorithm.
+
+        D-optimal designs minimize the covariance of parameter estimates by
+        maximizing the determinant of the information matrix (X'X).
+
+        Args:
+            factors: Dictionary of factor_name → list of levels
+            n_samples: Exact number of experimental runs desired
+            model_type: Type of model to optimize for:
+                - "linear": Main effects only
+                - "interactions": Main effects + 2-way interactions
+                - "quadratic": Full second-order model
+
+        Returns:
+            List of design points (dictionaries)
+
+        Raises:
+            ValueError: If n_samples is less than minimum required for model
+        """
+        factor_names = list(factors.keys())
+        n_factors = len(factor_names)
+
+        if n_factors < 2:
+            raise ValueError("D-optimal design requires at least 2 factors")
+
+        # Calculate minimum runs needed for the model
+        min_runs = self._calculate_min_runs(n_factors, model_type)
+        if n_samples < min_runs:
+            raise ValueError(
+                f"D-optimal {model_type} model with {n_factors} factors "
+                f"requires at least {min_runs} runs. You requested {n_samples}."
+            )
+
+        # Generate candidate set
+        candidates = self._generate_candidate_set(factors)
+
+        if len(candidates) < n_samples:
+            raise ValueError(
+                f"Not enough candidate points ({len(candidates)}) "
+                f"for requested sample size ({n_samples})"
+            )
+
+        # Convert candidates to numeric matrix for optimization
+        factor_levels = {fn: sorted(set(factors[fn])) for fn in factor_names}
+        candidate_matrix = self._encode_candidates(candidates, factor_names, factor_levels)
+
+        # Build model matrix function
+        model_matrix_func = self._get_model_matrix_func(model_type, n_factors)
+
+        # Run Fedorov exchange algorithm
+        selected_indices = self._fedorov_exchange(
+            candidate_matrix, n_samples, model_matrix_func
+        )
+
+        # Convert selected indices back to design points
+        design_points = [candidates[i] for i in selected_indices]
+
+        return design_points
+
+    def _calculate_min_runs(self, n_factors: int, model_type: str) -> int:
+        """Calculate minimum runs required for a model type."""
+        if model_type == "linear":
+            # Intercept + main effects
+            return n_factors + 1
+        elif model_type == "interactions":
+            # Intercept + main effects + 2-way interactions
+            n_interactions = n_factors * (n_factors - 1) // 2
+            return n_factors + n_interactions + 1
+        elif model_type == "quadratic":
+            # Intercept + main effects + interactions + squared terms
+            n_interactions = n_factors * (n_factors - 1) // 2
+            return n_factors + n_interactions + n_factors + 1
+        else:
+            raise ValueError(f"Unknown model type: {model_type}")
+
+    def _generate_candidate_set(
+        self,
+        factors: Dict[str, List[str]],
+        max_candidates: int = 5000
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate candidate set for D-optimal selection.
+
+        Uses full factorial if small enough, otherwise uses LHS sampling.
+        """
+        # Calculate full factorial size
+        total_combinations = 1
+        for levels in factors.values():
+            total_combinations *= len(levels)
+
+        if total_combinations <= max_candidates:
+            # Use full factorial as candidates
+            return self._generate_full_factorial(factors)
+        else:
+            # Use LHS to generate representative candidates
+            if self.has_pydoe3:
+                return self._generate_lhs(factors, max_candidates, use_smt=False)
+            else:
+                # Fallback: random sampling from full factorial
+                full_design = self._generate_full_factorial(factors)
+                indices = np.random.choice(
+                    len(full_design), size=min(max_candidates, len(full_design)),
+                    replace=False
+                )
+                return [full_design[i] for i in indices]
+
+    def _encode_candidates(
+        self,
+        candidates: List[Dict[str, Any]],
+        factor_names: List[str],
+        factor_levels: Dict[str, List]
+    ) -> np.ndarray:
+        """
+        Encode candidates as numeric matrix with values scaled to [-1, 1].
+        """
+        n_candidates = len(candidates)
+        n_factors = len(factor_names)
+        matrix = np.zeros((n_candidates, n_factors))
+
+        for i, candidate in enumerate(candidates):
+            for j, fn in enumerate(factor_names):
+                levels = factor_levels[fn]
+                value = candidate[fn]
+
+                # Try to convert to numeric
+                try:
+                    num_value = float(value)
+                    num_levels = [float(lv) for lv in levels]
+                    min_val = min(num_levels)
+                    max_val = max(num_levels)
+
+                    if max_val > min_val:
+                        # Scale to [-1, 1]
+                        matrix[i, j] = 2 * (num_value - min_val) / (max_val - min_val) - 1
+                    else:
+                        matrix[i, j] = 0
+                except (ValueError, TypeError):
+                    # Categorical: encode as index scaled to [-1, 1]
+                    try:
+                        idx = levels.index(value)
+                    except ValueError:
+                        idx = 0
+                    if len(levels) > 1:
+                        matrix[i, j] = 2 * idx / (len(levels) - 1) - 1
+                    else:
+                        matrix[i, j] = 0
+
+        return matrix
+
+    def _get_model_matrix_func(self, model_type: str, n_factors: int):
+        """
+        Return a function that builds the model matrix for given encoded points.
+        """
+        def build_linear(X: np.ndarray) -> np.ndarray:
+            """Build linear model matrix: [1, x1, x2, ..., xk]"""
+            n = X.shape[0]
+            return np.column_stack([np.ones(n), X])
+
+        def build_interactions(X: np.ndarray) -> np.ndarray:
+            """Build interaction model: [1, x1, ..., xk, x1*x2, x1*x3, ...]"""
+            n = X.shape[0]
+            cols = [np.ones(n)]
+            # Main effects
+            for j in range(n_factors):
+                cols.append(X[:, j])
+            # 2-way interactions
+            for j1 in range(n_factors):
+                for j2 in range(j1 + 1, n_factors):
+                    cols.append(X[:, j1] * X[:, j2])
+            return np.column_stack(cols)
+
+        def build_quadratic(X: np.ndarray) -> np.ndarray:
+            """Build quadratic model: [1, x1, ..., x1*x2, ..., x1^2, ...]"""
+            n = X.shape[0]
+            cols = [np.ones(n)]
+            # Main effects
+            for j in range(n_factors):
+                cols.append(X[:, j])
+            # 2-way interactions
+            for j1 in range(n_factors):
+                for j2 in range(j1 + 1, n_factors):
+                    cols.append(X[:, j1] * X[:, j2])
+            # Squared terms
+            for j in range(n_factors):
+                cols.append(X[:, j] ** 2)
+            return np.column_stack(cols)
+
+        if model_type == "linear":
+            return build_linear
+        elif model_type == "interactions":
+            return build_interactions
+        elif model_type == "quadratic":
+            return build_quadratic
+        else:
+            raise ValueError(f"Unknown model type: {model_type}")
+
+    def _fedorov_exchange(
+        self,
+        candidate_matrix: np.ndarray,
+        n_samples: int,
+        model_matrix_func,
+        max_iterations: int = 100
+    ) -> List[int]:
+        """
+        Fedorov's exchange algorithm for D-optimal design selection.
+
+        Args:
+            candidate_matrix: Encoded candidate points (n_candidates x n_factors)
+            n_samples: Number of points to select
+            model_matrix_func: Function to build model matrix
+            max_iterations: Maximum exchange iterations
+
+        Returns:
+            List of selected candidate indices
+        """
+        n_candidates = candidate_matrix.shape[0]
+
+        # Initialize with random selection
+        all_indices = list(range(n_candidates))
+        selected = list(np.random.choice(all_indices, size=n_samples, replace=False))
+        not_selected = [i for i in all_indices if i not in selected]
+
+        def calculate_d_value(indices):
+            """Calculate log determinant of X'X for numerical stability."""
+            X = model_matrix_func(candidate_matrix[indices])
+            try:
+                XtX = X.T @ X
+                # Use log determinant for numerical stability
+                sign, logdet = np.linalg.slogdet(XtX)
+                if sign <= 0:
+                    return -np.inf
+                return logdet
+            except np.linalg.LinAlgError:
+                return -np.inf
+
+        current_d = calculate_d_value(selected)
+
+        for iteration in range(max_iterations):
+            improved = False
+
+            for i, sel_idx in enumerate(selected):
+                best_swap = None
+                best_d = current_d
+
+                for not_sel_idx in not_selected:
+                    # Try swapping
+                    test_selected = selected.copy()
+                    test_selected[i] = not_sel_idx
+
+                    test_d = calculate_d_value(test_selected)
+
+                    if test_d > best_d:
+                        best_d = test_d
+                        best_swap = (i, not_sel_idx, sel_idx)
+
+                if best_swap is not None:
+                    i, new_idx, old_idx = best_swap
+                    selected[i] = new_idx
+                    not_selected.remove(new_idx)
+                    not_selected.append(old_idx)
+                    current_d = best_d
+                    improved = True
+
+            if not improved:
+                break
+
+        return selected

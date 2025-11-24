@@ -44,7 +44,7 @@ protein-stability-doe/
 ## Documentation
 
 📚 **Guides:**
-- **[Design Types Guide](docs/DESIGN_GUIDE.md)** - Choosing and using the 6 design types (Full Factorial, LHS, Fractional Factorial, Plackett-Burman, CCD, Box-Behnken)
+- **[Design Types Guide](docs/DESIGN_GUIDE.md)** - Choosing and using the 7 design types (Full Factorial, LHS, D-Optimal, Fractional Factorial, Plackett-Burman, CCD, Box-Behnken)
 - **[Well Mapping Guide](docs/WELL_MAPPING.md)** - Understanding well organization and Opentrons compatibility
 - **[Test Documentation](tests/README.md)** - Running and writing tests
 

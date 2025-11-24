@@ -201,6 +201,7 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
         design_options = [
             ("full_factorial", "Full Factorial (all combinations)"),
             ("lhs", "Latin Hypercube (space-filling)"),
+            ("d_optimal", "D-Optimal (model-optimized)"),
             ("fractional", "2-Level Fractional Factorial (screening)"),
             ("plackett_burman", "Plackett-Burman (efficient screening)"),
             ("central_composite", "Central Composite (optimization)"),
@@ -253,6 +254,34 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
         if not HAS_SMT:
             ttk.Label(optimize_frame, text="(requires SMT)",
                      foreground="orange", font=("TkDefaultFont", 8)).pack(side=tk.LEFT, padx=5)
+
+        # D-Optimal controls
+        self.d_optimal_controls = ttk.Frame(self.design_controls_frame)
+
+        d_opt_sample_frame = ttk.Frame(self.d_optimal_controls)
+        d_opt_sample_frame.pack(fill=tk.X)
+
+        ttk.Label(d_opt_sample_frame, text="Sample Size:").pack(side=tk.LEFT, padx=(0, 5))
+        self.d_optimal_sample_var = tk.IntVar(value=24)
+        vcmd_d_opt = (self.register(validate_single_numeric_input), '%d', '%S', '%P')
+        ttk.Entry(d_opt_sample_frame, textvariable=self.d_optimal_sample_var,
+                 width=8, validate='key', validatecommand=vcmd_d_opt).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(d_opt_sample_frame, text="(exact number of runs)",
+                 font=("TkDefaultFont", 8, "italic")).pack(side=tk.LEFT)
+
+        d_opt_model_frame = ttk.Frame(self.d_optimal_controls)
+        d_opt_model_frame.pack(fill=tk.X, pady=(5, 0))
+
+        ttk.Label(d_opt_model_frame, text="Model Type:").pack(side=tk.LEFT, padx=(0, 5))
+        self.d_optimal_model_var = tk.StringVar(value="quadratic")
+        d_opt_model_combo = ttk.Combobox(d_opt_model_frame, textvariable=self.d_optimal_model_var,
+                                        values=["linear", "interactions", "quadratic"],
+                                        state="readonly", width=12)
+        d_opt_model_combo.pack(side=tk.LEFT, padx=(0, 10))
+        d_opt_model_combo.current(2)
+
+        ttk.Label(d_opt_model_frame, text="(linear=main effects, interactions=+pairs, quadratic=+curves)",
+                 font=("TkDefaultFont", 8, "italic"), foreground="gray").pack(side=tk.LEFT)
 
         # Fractional Factorial controls
         self.fractional_controls = ttk.Frame(self.design_controls_frame)
@@ -366,6 +395,7 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
     def _hide_all_design_controls(self):
         """Hide all design-specific control frames"""
         self.lhs_controls.pack_forget()
+        self.d_optimal_controls.pack_forget()
         self.fractional_controls.pack_forget()
         self.pb_controls.pack_forget()
         self.ccd_controls.pack_forget()
@@ -405,6 +435,8 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
 
         if design_type == "lhs":
             self.lhs_controls.pack(fill=tk.X, pady=(5, 0))
+        elif design_type == "d_optimal":
+            self.d_optimal_controls.pack(fill=tk.X, pady=(5, 0))
         elif design_type == "fractional":
             self.fractional_controls.pack(fill=tk.X, pady=(5, 0))
         elif design_type == "plackett_burman":
@@ -636,6 +668,12 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
             elif design_type == "lhs":
                 sample_size = self.sample_size_var.get()
                 self.combo_var.set(f"{sample_size} (LHS)")
+                total = sample_size
+
+            elif design_type == "d_optimal":
+                sample_size = self.d_optimal_sample_var.get()
+                model_type = self.d_optimal_model_var.get()
+                self.combo_var.set(f"{sample_size} (D-Opt)")
                 total = sample_size
 
             elif design_type == "fractional":
