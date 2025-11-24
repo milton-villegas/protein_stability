@@ -15,7 +15,9 @@ class VolumeCalculator:
         factor_values: Dict[str, float],
         stock_concentrations: Dict[str, float],
         final_volume: float,
-        buffer_ph_values: Optional[List[str]] = None
+        buffer_ph_values: Optional[List[str]] = None,
+        protein_stock: Optional[float] = None,
+        protein_final: Optional[float] = None
     ) -> Dict[str, float]:
         """
         Calculate reagent volumes using C1V1 = C2V2 formula.
@@ -32,6 +34,8 @@ class VolumeCalculator:
             stock_concentrations: Dict of factor_name → stock concentration
             final_volume: Total final volume (µL)
             buffer_ph_values: List of unique pH values (for buffer handling)
+            protein_stock: Protein stock concentration (mg/mL), optional
+            protein_final: Desired final protein concentration (mg/mL), optional
 
         Returns:
             Dict of reagent → volume (µL)
@@ -96,6 +100,16 @@ class VolumeCalculator:
                 )
                 volumes[factor_name] = vol
                 total_volume_used += vol
+
+        # Calculate protein volume if concentrations provided
+        if protein_stock and protein_final and protein_stock > 0:
+            protein_volume = VolumeCalculator._calculate_component_volume(
+                protein_final, protein_stock, final_volume
+            )
+            volumes["protein"] = protein_volume
+            total_volume_used += protein_volume
+        else:
+            volumes["protein"] = 0.0
 
         # Calculate water to reach final volume
         water_volume = round(final_volume - total_volume_used, 2)

@@ -318,6 +318,31 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
         ttk.Entry(bottom_panel, textvariable=self.final_vol_var, width=12,
                  validate='key', validatecommand=vcmd).grid(row=0, column=1, sticky="w", padx=5)
 
+        # Protein concentration inputs
+        protein_frame = ttk.Frame(bottom_panel)
+        protein_frame.grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
+
+        ttk.Label(protein_frame, text="Protein Stock (mg/mL):").pack(side=tk.LEFT)
+        self.protein_stock_var = tk.StringVar(value="")
+        ttk.Entry(protein_frame, textvariable=self.protein_stock_var, width=8,
+                 validate='key', validatecommand=vcmd).pack(side=tk.LEFT, padx=(5, 15))
+
+        ttk.Label(protein_frame, text="Final (mg/mL):").pack(side=tk.LEFT)
+        self.protein_final_var = tk.StringVar(value="")
+        ttk.Entry(protein_frame, textvariable=self.protein_final_var, width=8,
+                 validate='key', validatecommand=vcmd).pack(side=tk.LEFT, padx=5)
+
+        # Dynamic protein volume display
+        self.protein_vol_var = tk.StringVar(value="")
+        self.protein_vol_label = ttk.Label(protein_frame, textvariable=self.protein_vol_var,
+                                           font=("TkDefaultFont", 11, "bold"), foreground="#2E7D32")
+        self.protein_vol_label.pack(side=tk.LEFT, padx=(10, 0))
+
+        # Add traces to update protein volume display
+        self.protein_stock_var.trace_add("write", self._update_protein_volume_display)
+        self.protein_final_var.trace_add("write", self._update_protein_volume_display)
+        self.final_vol_var.trace_add("write", self._update_protein_volume_display)
+
         # Status display
         status_frame = ttk.Frame(bottom_panel)
         status_frame.grid(row=0, column=2, sticky="e")
@@ -336,7 +361,7 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
 
         # Export button
         ttk.Button(bottom_panel, text="Export Design",
-                  command=self._export_both).grid(row=1, column=0, columnspan=3, pady=(8, 0))
+                  command=self._export_both).grid(row=2, column=0, columnspan=3, pady=(8, 0))
 
     def _hide_all_design_controls(self):
         """Hide all design-specific control frames"""
@@ -345,6 +370,28 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
         self.pb_controls.pack_forget()
         self.ccd_controls.pack_forget()
         self.bb_controls.pack_forget()
+
+    def _update_protein_volume_display(self, *args):
+        """Update the protein volume display when inputs change."""
+        try:
+            stock_str = self.protein_stock_var.get().strip()
+            final_str = self.protein_final_var.get().strip()
+            vol_str = self.final_vol_var.get().strip()
+
+            if stock_str and final_str and vol_str:
+                stock = float(stock_str)
+                final = float(final_str)
+                final_vol = float(vol_str)
+
+                if stock > 0 and final > 0 and final_vol > 0:
+                    # C1*V1 = C2*V2 -> V1 = (C2*V2)/C1
+                    protein_vol = round((final * final_vol) / stock, 2)
+                    self.protein_vol_var.set(f"= {protein_vol} uL/well")
+                    return
+
+            self.protein_vol_var.set("")
+        except (ValueError, ZeroDivisionError):
+            self.protein_vol_var.set("")
 
     def _on_design_type_changed(self):
         """Handle design type dropdown change"""

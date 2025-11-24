@@ -162,6 +162,11 @@ class ExportPanelMixin:
                 continue
             volume_headers.append(factor)
 
+        # NOTE: Protein column is NOT included in Opentrons CSV since protein is added manually.
+        # The protein volume is still calculated and subtracted from water volume.
+        # To enable protein column in CSV, uncomment the line below:
+        # volume_headers.append("protein")
+
         # Add water column at the end
         volume_headers.append("water")
 
@@ -376,6 +381,22 @@ class ExportPanelMixin:
                     except (ValueError, ZeroDivisionError):
                         volumes[factor] = 0
 
+            # Calculate protein volume if concentrations are provided
+            protein_volume = 0.0
+            try:
+                protein_stock_str = self.protein_stock_var.get().strip()
+                protein_final_str = self.protein_final_var.get().strip()
+                if protein_stock_str and protein_final_str:
+                    protein_stock = float(protein_stock_str)
+                    protein_final = float(protein_final_str)
+                    if protein_stock > 0 and protein_final > 0:
+                        # C1*V1 = C2*V2 -> V1 = (C2*V2)/C1
+                        protein_volume = round((protein_final * final_vol) / protein_stock, 2)
+                        total_volume_used += protein_volume
+            except (ValueError, AttributeError):
+                pass
+            volumes["protein"] = protein_volume
+
             # Calculate water to reach final volume
             water_volume = round(final_vol - total_volume_used, 2)
             volumes["water"] = water_volume
@@ -543,21 +564,64 @@ class ExportPanelMixin:
                 # Get display name
                 display_name = AVAILABLE_FACTORS.get(factor_name, factor_name)
 
-                # Determine unit based on factor name
-                if "pH" in factor_name:
-                    unit = "pH"
-                elif "conc" in factor_name.lower() or "salt" in factor_name.lower():
-                    unit = "mM"
-                elif "glycerol" in factor_name.lower() or "dmso" in factor_name.lower() or "detergent" in factor_name.lower():
-                    unit = "%"
-                else:
-                    unit = ""  # Unknown unit
+                # Extract unit from display name (e.g., "NaCl (mM)" -> "mM")
+                unit = ""
+                if "(" in display_name and ")" in display_name:
+                    start = display_name.rfind("(") + 1
+                    end = display_name.rfind(")")
+                    unit = display_name[start:end]
+                elif "pH" in display_name:
+                    unit = ""  # pH is unitless
 
                 # Write row
                 stock_sheet.cell(row=row_idx, column=1, value=display_name)
                 stock_sheet.cell(row=row_idx, column=2, value=stock_value)
                 stock_sheet.cell(row=row_idx, column=3, value=unit)
                 row_idx += 1
+
+            # Add protein information if provided
+            try:
+                protein_stock_str = self.protein_stock_var.get().strip()
+                protein_final_str = self.protein_final_var.get().strip()
+                if protein_stock_str and protein_final_str:
+                    protein_stock = float(protein_stock_str)
+                    protein_final = float(protein_final_str)
+                    if protein_stock > 0 and protein_final > 0:
+                        final_vol = float(self.final_vol_var.get())
+                        protein_vol = round((protein_final * final_vol) / protein_stock, 2)
+
+                        # Add separator row
+                        row_idx += 1
+
+                        # Add protein section header
+                        cell = stock_sheet.cell(row=row_idx, column=1, value="PROTEIN (added manually)")
+                        cell.font = Font(bold=True)
+                        cell.alignment = Alignment(horizontal="center")
+                        cell.fill = PatternFill(start_color="81C784", end_color="81C784", fill_type="solid")
+                        stock_sheet.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=3)
+                        row_idx += 1
+
+                        # Protein stock concentration
+                        stock_sheet.cell(row=row_idx, column=1, value="Stock Concentration")
+                        stock_sheet.cell(row=row_idx, column=2, value=protein_stock)
+                        stock_sheet.cell(row=row_idx, column=3, value="mg/mL")
+                        row_idx += 1
+
+                        # Protein final concentration
+                        stock_sheet.cell(row=row_idx, column=1, value="Final Concentration")
+                        stock_sheet.cell(row=row_idx, column=2, value=protein_final)
+                        stock_sheet.cell(row=row_idx, column=3, value="mg/mL")
+                        row_idx += 1
+
+                        # Protein volume to add
+                        cell = stock_sheet.cell(row=row_idx, column=1, value="Volume to Add per Well")
+                        cell.font = Font(bold=True)
+                        cell = stock_sheet.cell(row=row_idx, column=2, value=protein_vol)
+                        cell.font = Font(bold=True)
+                        cell = stock_sheet.cell(row=row_idx, column=3, value="uL")
+                        cell.font = Font(bold=True)
+            except (ValueError, AttributeError):
+                pass
 
             # Auto-adjust stock sheet columns
             for col in stock_sheet.columns:
