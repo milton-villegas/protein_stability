@@ -2328,21 +2328,24 @@ class AnalysisTab(ttk.Frame):
                 
                 # Get stock concentrations from metadata first
                 stock_concs = self.handler.get_stock_concentrations()
-                
+
+                # Get per-level concentrations from metadata
+                per_level_concs = self.handler.get_per_level_concs()
+
                 # If no metadata, show dialog to ask user
-                if not stock_concs:
+                if not stock_concs and not per_level_concs:
                     stock_concs = self._prompt_for_stock_concentrations()
                     if stock_concs is None:
                         # User cancelled
                         return
-                
+
                 # Get buffer pH values from data
                 buffer_ph_values = []
                 if 'buffer pH' in self.handler.data.columns or 'Buffer pH' in self.handler.data.columns:
                     ph_col = 'buffer pH' if 'buffer pH' in self.handler.data.columns else 'Buffer pH'
                     unique_phs = sorted(self.handler.data[ph_col].dropna().unique())
                     buffer_ph_values = [str(ph) for ph in unique_phs]
-                
+
                 # Export
                 result = self.optimizer.export_bo_batch_to_files(
                     n_suggestions=n_suggestions,
@@ -2350,7 +2353,8 @@ class AnalysisTab(ttk.Frame):
                     excel_path=self.filepath,
                     stock_concs=stock_concs,
                     final_volume=final_volume,
-                    buffer_ph_values=buffer_ph_values
+                    buffer_ph_values=buffer_ph_values,
+                    per_level_concs=per_level_concs
                 )
                 
                 if result:

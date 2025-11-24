@@ -1894,10 +1894,11 @@ class BayesianOptimizer:
         # Default: return normalized name
         return normalized
     
-    def export_bo_batch_to_files(self, n_suggestions, batch_number, excel_path, 
-                                 stock_concs, final_volume, buffer_ph_values):
+    def export_bo_batch_to_files(self, n_suggestions, batch_number, excel_path,
+                                 stock_concs, final_volume, buffer_ph_values,
+                                 per_level_concs=None):
         """Export BO suggestions to Excel and Opentrons CSV
-        
+
         Args:
             n_suggestions: Number of BO suggestions to generate
             batch_number: Batch number for this BO iteration
@@ -1905,7 +1906,8 @@ class BayesianOptimizer:
             stock_concs: Dict of stock concentrations {factor: concentration}
             final_volume: Final volume in µL
             buffer_ph_values: List of buffer pH values used
-        
+            per_level_concs: Optional dict of per-level concentrations {factor: {level: {stock, final}}}
+
         Returns:
             Tuple of (xlsx_path, csv_path) or None if failed
         """
@@ -2096,21 +2098,36 @@ class BayesianOptimizer:
                 if 'detergent' in factor_col_indices:
                     detergent_col = factor_col_indices['detergent']
                     detergent_type = str(excel_row[detergent_col]).strip()
-                    
+
                     # Initialize all detergent columns to 0
                     for det in detergent_values:
                         det_clean = det.lower().replace(' ', '_').replace('-', '_')
                         volumes[det_clean] = 0
-                    
-                    # Calculate volume for the specific detergent used
-                    if detergent_type and 'detergent_concentration' in factor_col_indices:
+
+                    # Check for per-level concentrations first
+                    per_level_det = per_level_concs.get('detergent', {}) if per_level_concs else {}
+
+                    if detergent_type and per_level_det and detergent_type in per_level_det:
+                        # Use per-level concentrations (stock and final are predefined)
+                        level_data = per_level_det[detergent_type]
+                        detergent_stock = level_data['stock']
+                        desired_conc = level_data['final']
+
+                        if detergent_stock > 0:
+                            volume = (desired_conc * final_volume) / detergent_stock
+                            det_clean = detergent_type.lower().replace(' ', '_').replace('-', '_')
+                            volumes[det_clean] = round(volume, 2)
+                            total_volume_used += volumes[det_clean]
+
+                    elif detergent_type and 'detergent_concentration' in factor_col_indices:
+                        # Fall back to normal mode (get concentration from BO suggestion)
                         detergent_conc_col = factor_col_indices['detergent_concentration']
                         detergent_conc_value = excel_row[detergent_conc_col]
-                        
+
                         if detergent_conc_value is not None:
                             desired_conc = float(detergent_conc_value)
                             detergent_stock = stock_concs.get('detergent_concentration', 0)
-                            
+
                             if detergent_stock > 0:
                                 volume = (desired_conc * final_volume) / detergent_stock
                                 det_clean = detergent_type.lower().replace(' ', '_').replace('-', '_')
@@ -2121,21 +2138,36 @@ class BayesianOptimizer:
                 if 'reducing_agent' in factor_col_indices:
                     agent_col = factor_col_indices['reducing_agent']
                     agent_type = str(excel_row[agent_col]).strip()
-                    
+
                     # Initialize all reducing agent columns to 0
                     for agent in reducing_agent_values:
                         agent_clean = agent.lower().replace(' ', '_').replace('-', '_')
                         volumes[agent_clean] = 0
-                    
-                    # Calculate volume for the specific reducing agent used
-                    if agent_type and 'reducing_agent_concentration' in factor_col_indices:
+
+                    # Check for per-level concentrations first
+                    per_level_agent = per_level_concs.get('reducing_agent', {}) if per_level_concs else {}
+
+                    if agent_type and per_level_agent and agent_type in per_level_agent:
+                        # Use per-level concentrations (stock and final are predefined)
+                        level_data = per_level_agent[agent_type]
+                        agent_stock = level_data['stock']
+                        desired_conc = level_data['final']
+
+                        if agent_stock > 0:
+                            volume = (desired_conc * final_volume) / agent_stock
+                            agent_clean = agent_type.lower().replace(' ', '_').replace('-', '_')
+                            volumes[agent_clean] = round(volume, 2)
+                            total_volume_used += volumes[agent_clean]
+
+                    elif agent_type and 'reducing_agent_concentration' in factor_col_indices:
+                        # Fall back to normal mode (get concentration from BO suggestion)
                         agent_conc_col = factor_col_indices['reducing_agent_concentration']
                         agent_conc_value = excel_row[agent_conc_col]
-                        
+
                         if agent_conc_value is not None:
                             desired_conc = float(agent_conc_value)
                             agent_stock = stock_concs.get('reducing_agent_concentration', 0)
-                            
+
                             if agent_stock > 0:
                                 volume = (desired_conc * final_volume) / agent_stock
                                 agent_clean = agent_type.lower().replace(' ', '_').replace('-', '_')

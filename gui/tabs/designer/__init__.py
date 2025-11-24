@@ -501,12 +501,20 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
 
         if result["name"]:
             factor_name = result["name"]
-            editor = FactorEditDialog(self, factor_name)
+            editor = FactorEditDialog(self, factor_name, parent_model=self.model)
             self.wait_window(editor)
 
             if editor.result_levels:
                 try:
-                    self.model.add_factor(factor_name, editor.result_levels, editor.result_stock)
+                    # In per-level mode, don't add the concentration factor to the model
+                    # The concentrations will be looked up from per_level_concs during export
+                    if editor.result_per_level_concs:
+                        cat_factor = self._get_categorical_factor_for_conc(factor_name)
+                        self.model.set_per_level_concs(cat_factor, editor.result_per_level_concs)
+                        # Don't add the concentration factor itself
+                    else:
+                        # Normal mode: add the factor with levels and stock
+                        self.model.add_factor(factor_name, editor.result_levels, editor.result_stock)
                     self._update_display()
                 except ValueError as e:
                     messagebox.showerror("Invalid Factor",
@@ -542,12 +550,26 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
                 f"Factor '{display_name}' is already in your design.")
             return
 
-        editor = FactorEditDialog(self, factor_key)
+        # Get existing per-level concs for concentration factors
+        per_level_concs = None
+        if factor_key in ["detergent_concentration", "reducing_agent_concentration"]:
+            cat_factor = self._get_categorical_factor_for_conc(factor_key)
+            per_level_concs = self.model.get_per_level_concs(cat_factor)
+
+        editor = FactorEditDialog(self, factor_key, per_level_concs=per_level_concs, parent_model=self.model)
         self.wait_window(editor)
 
         if editor.result_levels:
             try:
-                self.model.add_factor(factor_key, editor.result_levels, editor.result_stock)
+                # In per-level mode, don't add the concentration factor to the model
+                # The concentrations will be looked up from per_level_concs during export
+                if editor.result_per_level_concs:
+                    cat_factor = self._get_categorical_factor_for_conc(factor_key)
+                    self.model.set_per_level_concs(cat_factor, editor.result_per_level_concs)
+                    # Don't add the concentration factor itself
+                else:
+                    # Normal mode: add the factor with levels and stock
+                    self.model.add_factor(factor_key, editor.result_levels, editor.result_stock)
                 self._update_display()
             except ValueError as e:
                 messagebox.showerror("Invalid Factor",
@@ -573,18 +595,47 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
             factor_key = factor_name
 
         factors = self.model.get_factors()
-        if factor_key not in factors:
+
+        # Check if it's a per-level concentration factor (not in factors but has per_level_concs)
+        per_level_concs = None
+        if factor_key in ["detergent_concentration", "reducing_agent_concentration"]:
+            cat_factor = self._get_categorical_factor_for_conc(factor_key)
+            per_level_concs = self.model.get_per_level_concs(cat_factor)
+
+        # If not in factors and no per-level concs, can't edit
+        if factor_key not in factors and not per_level_concs:
             return
 
-        existing_levels = factors[factor_key]
+        # Get existing levels and stock (if in normal mode)
+        existing_levels = factors.get(factor_key, [])
         stock_conc = self.model.get_stock_conc(factor_key)
 
-        editor = FactorEditDialog(self, factor_key, existing_levels, stock_conc)
+        editor = FactorEditDialog(self, factor_key, existing_levels, stock_conc, per_level_concs, parent_model=self.model)
         self.wait_window(editor)
 
         if editor.result_levels:
             try:
-                self.model.update_factor(factor_key, editor.result_levels, editor.result_stock)
+                cat_factor = self._get_categorical_factor_for_conc(factor_key)
+
+                # Handle per-level mode
+                if editor.result_per_level_concs:
+                    # Switching to or staying in per-level mode
+                    self.model.set_per_level_concs(cat_factor, editor.result_per_level_concs)
+                    # Remove the concentration factor from model if it exists
+                    if factor_key in self.model.get_factors():
+                        self.model.remove_factor(factor_key)
+                else:
+                    # Normal mode: update or add the factor
+                    if factor_key in self.model.get_factors():
+                        self.model.update_factor(factor_key, editor.result_levels, editor.result_stock)
+                    else:
+                        self.model.add_factor(factor_key, editor.result_levels, editor.result_stock)
+
+                    # Clear per-level concs if switching from per-level to normal mode
+                    if factor_key in ["detergent_concentration", "reducing_agent_concentration"]:
+                        if self.model.has_per_level_concs(cat_factor):
+                            self.model.clear_per_level_concs(cat_factor)
+
                 self._update_display()
             except ValueError as e:
                 messagebox.showerror("Invalid Factor Update",
@@ -614,6 +665,13 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
 
         if result:
             self.model.remove_factor(factor_key)
+
+            # Also clear per-level concentrations if deleting a concentration factor
+            if factor_key in ["detergent_concentration", "reducing_agent_concentration"]:
+                cat_factor = self._get_categorical_factor_for_conc(factor_key)
+                if self.model.has_per_level_concs(cat_factor):
+                    self.model.clear_per_level_concs(cat_factor)
+
             self._update_display()
 
     def _clear_all(self):
@@ -629,12 +687,30 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
             self.model.clear()
             self._update_display()
 
+    def _get_categorical_factor_for_conc(self, factor_key: str) -> str:
+        """Get the categorical factor name for a concentration factor.
+
+        Args:
+            factor_key: The concentration factor key (e.g., "detergent_concentration")
+
+        Returns:
+            The categorical factor name (e.g., "detergent")
+        """
+        if factor_key == "detergent_concentration":
+            return "detergent"
+        elif factor_key == "reducing_agent_concentration":
+            return "reducing_agent"
+        return factor_key
+
     def _update_display(self):
         """Update the treeview and combination counter"""
         for item in self.tree.get_children():
             self.tree.delete(item)
 
         factors = self.model.get_factors()
+        per_level_concs = self.model.get_all_per_level_concs()
+
+        # Display regular factors
         for factor_key, levels in factors.items():
             display_name = AVAILABLE_FACTORS.get(factor_key, factor_key)
             levels_str = ", ".join(str(l) for l in levels[:5])
@@ -645,6 +721,23 @@ class DesignerTab(DesignPanelMixin, ExportPanelMixin, ttk.Frame):
             stock = self.model.get_stock_conc(factor_key)
             stock_str = f"{stock}" if stock else "N/A"
 
+            self.tree.insert("", tk.END, values=(display_name, levels_str, count, stock_str))
+
+        # Display per-level concentration factors (not in factors list but have per_level_concs)
+        if "detergent" in per_level_concs and "detergent_concentration" not in factors:
+            display_name = AVAILABLE_FACTORS.get("detergent_concentration", "Detergent (%)")
+            concs = per_level_concs["detergent"]
+            levels_str = f"Per-level ({len(concs)} types)"
+            count = len(concs)
+            stock_str = "Per-level"
+            self.tree.insert("", tk.END, values=(display_name, levels_str, count, stock_str))
+
+        if "reducing_agent" in per_level_concs and "reducing_agent_concentration" not in factors:
+            display_name = AVAILABLE_FACTORS.get("reducing_agent_concentration", "Reducing Agent (mM)")
+            concs = per_level_concs["reducing_agent"]
+            levels_str = f"Per-level ({len(concs)} types)"
+            count = len(concs)
+            stock_str = "Per-level"
             self.tree.insert("", tk.END, values=(display_name, levels_str, count, stock_str))
 
         display_text = self.design_type_var.get()

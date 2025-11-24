@@ -199,6 +199,23 @@ class ExportPanelMixin:
 
         stock_concs = self.model.get_all_stock_concs()
 
+        # Check for per-level concentrations (when used, detergent_concentration has placeholder levels)
+        per_level_concs = self.model.get_all_per_level_concs()
+
+        # Validate that detergent factor exists when per-level concs are used
+        if "detergent" in per_level_concs and per_level_concs["detergent"]:
+            if "detergent" not in factors:
+                raise ValueError(
+                    "Per-level concentrations are configured but 'Detergent' factor is missing.\n\n"
+                    "Please add the 'Detergent' factor with the detergent types (DDM, LMNG, etc.)."
+                )
+        if "reducing_agent" in per_level_concs and per_level_concs["reducing_agent"]:
+            if "reducing_agent" not in factors:
+                raise ValueError(
+                    "Per-level concentrations are configured but 'Reducing Agent' factor is missing.\n\n"
+                    "Please add the 'Reducing Agent' factor with the types (DTT, TCEP, etc.)."
+                )
+
         # Get design type and generate combinations
         display_text = self.design_type_var.get()
         if display_text in self.design_map:
@@ -345,7 +362,23 @@ class ExportPanelMixin:
 
                 # Only add volume if detergent is not None/empty
                 if detergent_type and detergent_type.lower() not in ['none', '0', 'nan', '']:
-                    if "detergent_concentration" in row_dict and "detergent_concentration" in stock_concs:
+                    # Check for per-level concentrations first
+                    per_level_concs = self.model.get_per_level_concs("detergent")
+                    if per_level_concs and detergent_type in per_level_concs:
+                        # Use per-level stock and final concentrations
+                        try:
+                            level_data = per_level_concs[detergent_type]
+                            detergent_stock = level_data["stock"]
+                            desired_conc = level_data["final"]
+                            # C1*V1 = C2*V2 -> V1 = (C2*V2)/C1
+                            volume = (desired_conc * final_vol) / detergent_stock
+                            det_clean = detergent_type.replace(' ', '_').replace('-', '_').lower()
+                            volumes[det_clean] = round(volume, 2)
+                            total_volume_used += volumes[det_clean]
+                        except (KeyError, ValueError, ZeroDivisionError):
+                            pass
+                    elif "detergent_concentration" in row_dict and "detergent_concentration" in stock_concs:
+                        # Fall back to old behavior: single stock, desired conc from row
                         try:
                             desired_conc = float(row_dict["detergent_concentration"])
                             detergent_stock = stock_concs["detergent_concentration"]
@@ -368,7 +401,23 @@ class ExportPanelMixin:
 
                 # Only add volume if reducing agent is not None/empty
                 if agent_type and agent_type.lower() not in ['none', '0', 'nan', '']:
-                    if "reducing_agent_concentration" in row_dict and "reducing_agent_concentration" in stock_concs:
+                    # Check for per-level concentrations first
+                    per_level_concs = self.model.get_per_level_concs("reducing_agent")
+                    if per_level_concs and agent_type in per_level_concs:
+                        # Use per-level stock and final concentrations
+                        try:
+                            level_data = per_level_concs[agent_type]
+                            agent_stock = level_data["stock"]
+                            desired_conc = level_data["final"]
+                            # C1*V1 = C2*V2 -> V1 = (C2*V2)/C1
+                            volume = (desired_conc * final_vol) / agent_stock
+                            agent_clean = agent_type.replace(' ', '_').replace('-', '_').lower()
+                            volumes[agent_clean] = round(volume, 2)
+                            total_volume_used += volumes[agent_clean]
+                        except (KeyError, ValueError, ZeroDivisionError):
+                            pass
+                    elif "reducing_agent_concentration" in row_dict and "reducing_agent_concentration" in stock_concs:
+                        # Fall back to old behavior: single stock, desired conc from row
                         try:
                             desired_conc = float(row_dict["reducing_agent_concentration"])
                             agent_stock = stock_concs["reducing_agent_concentration"]
@@ -480,10 +529,19 @@ class ExportPanelMixin:
             stock_concs = self.model.get_all_stock_concs()
 
             missing_stocks = []
+            per_level_concs = self.model.get_all_per_level_concs()
+
             for factor in factors.keys():
                 # Skip categorical factors that don't need stock concentrations
                 if factor in ["buffer pH", "detergent", "reducing_agent"]:
                     continue
+
+                # Skip concentration factors that use per-level concentrations
+                if factor == "detergent_concentration" and "detergent" in per_level_concs:
+                    continue
+                if factor == "reducing_agent_concentration" and "reducing_agent" in per_level_concs:
+                    continue
+
                 if factor not in stock_concs:
                     missing_stocks.append(AVAILABLE_FACTORS.get(factor, factor))
 
@@ -564,16 +622,17 @@ class ExportPanelMixin:
             # CREATE STOCK CONCENTRATIONS METADATA SHEET
             stock_sheet = wb.create_sheet(title="Stock_Concentrations")
 
-            # Headers for stock concentrations sheet
-            stock_headers = ["Factor Name", "Stock Value", "Unit"]
+            # Headers for unified stock concentrations sheet
+            stock_headers = ["Factor Name", "Level", "Stock Value", "Final Value", "Unit"]
             for col_idx, header in enumerate(stock_headers, start=1):
                 cell = stock_sheet.cell(row=1, column=col_idx, value=header)
                 cell.font = Font(bold=True)
                 cell.alignment = Alignment(horizontal="center")
                 cell.fill = PatternFill(start_color="2196F3", end_color="2196F3", fill_type="solid")
 
-            # Write stock concentration data
             row_idx = 2
+
+            # Write normal stock concentration data (Level column empty)
             for factor_name, stock_value in stock_concs.items():
                 # Get display name
                 display_name = AVAILABLE_FACTORS.get(factor_name, factor_name)
@@ -587,13 +646,43 @@ class ExportPanelMixin:
                 elif "pH" in display_name:
                     unit = ""  # pH is unitless
 
-                # Write row
+                # Write row: Factor Name | (empty) | Stock Value | (empty) | Unit
                 stock_sheet.cell(row=row_idx, column=1, value=display_name)
-                stock_sheet.cell(row=row_idx, column=2, value=stock_value)
-                stock_sheet.cell(row=row_idx, column=3, value=unit)
+                stock_sheet.cell(row=row_idx, column=2, value="")  # Level column empty
+                stock_sheet.cell(row=row_idx, column=3, value=stock_value)
+                stock_sheet.cell(row=row_idx, column=4, value="")  # Final Value empty
+                stock_sheet.cell(row=row_idx, column=5, value=unit)
                 row_idx += 1
 
-            # Add protein information if provided
+            # Write per-level concentrations (same uniform format, just with Level filled in)
+            all_per_level = self.model.get_all_per_level_concs()
+            if all_per_level:
+                for factor_name, level_concs in all_per_level.items():
+                    if not level_concs:
+                        continue
+
+                    # Get concentration factor display name and unit
+                    if factor_name == "detergent":
+                        conc_factor = "detergent_concentration"
+                        unit = "%"
+                    elif factor_name == "reducing_agent":
+                        conc_factor = "reducing_agent_concentration"
+                        unit = "mM"
+                    else:
+                        continue
+
+                    display_name = AVAILABLE_FACTORS.get(conc_factor, conc_factor)
+
+                    # Write one row per level: Factor Name | Level | Stock Value | Final Value | Unit
+                    for level, conc_data in level_concs.items():
+                        stock_sheet.cell(row=row_idx, column=1, value=display_name)
+                        stock_sheet.cell(row=row_idx, column=2, value=level)
+                        stock_sheet.cell(row=row_idx, column=3, value=conc_data.get("stock", ""))
+                        stock_sheet.cell(row=row_idx, column=4, value=conc_data.get("final", ""))
+                        stock_sheet.cell(row=row_idx, column=5, value=unit)
+                        row_idx += 1
+
+            # Add protein information if provided (kept separate - added manually, not by robot)
             try:
                 protein_stock_str = self.protein_stock_var.get().strip()
                 protein_final_str = self.protein_final_var.get().strip()
@@ -607,32 +696,33 @@ class ExportPanelMixin:
                         # Add separator row
                         row_idx += 1
 
-                        # Add protein section header
-                        cell = stock_sheet.cell(row=row_idx, column=1, value="PROTEIN (added manually)")
-                        cell.font = Font(bold=True)
-                        cell.alignment = Alignment(horizontal="center")
-                        cell.fill = PatternFill(start_color="81C784", end_color="81C784", fill_type="solid")
-                        stock_sheet.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=3)
+                        # Add protein info row (uniform format but highlighted)
+                        # Factor Name | Level | Stock Value | Final Value | Unit
+                        stock_sheet.cell(row=row_idx, column=1, value="Protein (added manually)")
+                        stock_sheet.cell(row=row_idx, column=2, value="")
+                        stock_sheet.cell(row=row_idx, column=3, value=protein_stock)
+                        stock_sheet.cell(row=row_idx, column=4, value=protein_final)
+                        stock_sheet.cell(row=row_idx, column=5, value="mg/mL")
+
+                        # Highlight protein row in green
+                        for col_idx in range(1, 6):
+                            cell = stock_sheet.cell(row=row_idx, column=col_idx)
+                            cell.fill = PatternFill(start_color="81C784", end_color="81C784", fill_type="solid")
+
                         row_idx += 1
 
-                        # Protein stock concentration
-                        stock_sheet.cell(row=row_idx, column=1, value="Stock Concentration")
-                        stock_sheet.cell(row=row_idx, column=2, value=protein_stock)
-                        stock_sheet.cell(row=row_idx, column=3, value="mg/mL")
-                        row_idx += 1
+                        # Add calculated volume info row
+                        stock_sheet.cell(row=row_idx, column=1, value="→ Volume per well")
+                        stock_sheet.cell(row=row_idx, column=2, value="")
+                        stock_sheet.cell(row=row_idx, column=3, value=protein_vol)
+                        stock_sheet.cell(row=row_idx, column=4, value="")
+                        cell = stock_sheet.cell(row=row_idx, column=5, value="µL")
 
-                        # Protein final concentration
-                        stock_sheet.cell(row=row_idx, column=1, value="Final Concentration")
-                        stock_sheet.cell(row=row_idx, column=2, value=protein_final)
-                        stock_sheet.cell(row=row_idx, column=3, value="mg/mL")
-                        row_idx += 1
-
-                        # Protein volume to add
-                        cell = stock_sheet.cell(row=row_idx, column=1, value="Volume to Add per Well")
-                        cell.font = Font(bold=True)
-                        cell = stock_sheet.cell(row=row_idx, column=2, value=protein_vol)
-                        cell.font = Font(bold=True)
-                        cell = stock_sheet.cell(row=row_idx, column=3, value="uL")
+                        # Make volume row bold and slightly highlighted
+                        for col_idx in range(1, 6):
+                            cell = stock_sheet.cell(row=row_idx, column=col_idx)
+                            cell.font = Font(bold=True)
+                            cell.fill = PatternFill(start_color="C8E6C9", end_color="C8E6C9", fill_type="solid")
                         cell.font = Font(bold=True)
             except (ValueError, AttributeError):
                 pass
