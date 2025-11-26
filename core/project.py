@@ -2,7 +2,7 @@
 Shared project data model
 Combines functionality from FactorModel (Designer) and DataHandler (Analysis)
 """
-import pickle
+import json
 from datetime import datetime
 from typing import Dict, List, Optional
 import pandas as pd
@@ -138,6 +138,43 @@ class DoEProject:
         self._per_level_concs.clear()
         self.design_matrix = None
 
+    def total_combinations(self) -> int:
+        """
+        Calculate total number of full factorial combinations.
+
+        When per-level concentrations are used for a factor, the corresponding
+        concentration factor is excluded from the count (e.g., if detergent has
+        per-level concentrations, detergent_concentration is not counted).
+
+        Returns:
+            Product of all factor level counts. Returns 0 if no factors exist.
+        """
+        if not self._factors:
+            return 0
+
+        # Get factors, excluding concentration factors that have per-level mode active
+        factors_to_count = {}
+        for factor_name, levels in self._factors.items():
+            # Check if this is a concentration factor for a factor with per-level mode
+            skip_this_factor = False
+
+            # Check for detergent_concentration when detergent has per-level
+            if factor_name == "detergent_concentration" and self.has_per_level_concs("detergent"):
+                skip_this_factor = True
+
+            # Check for reducing_agent_concentration when reducing_agent has per-level
+            if factor_name == "reducing_agent_concentration" and self.has_per_level_concs("reducing_agent"):
+                skip_this_factor = True
+
+            if not skip_this_factor:
+                factors_to_count[factor_name] = levels
+
+        # Calculate product
+        result = 1
+        for levels in factors_to_count.values():
+            result *= len(levels)
+        return result
+
     # ========== Analysis Data Management (from DataHandler) ==========
 
     def load_results(self, filepath: str):
@@ -222,20 +259,60 @@ class DoEProject:
     # ========== Project Persistence ==========
 
     def save(self, filepath: str):
-        """Save project to file"""
+        """Save project to JSON file"""
         self.modified_date = datetime.now()
-        with open(filepath, 'wb') as f:
-            # Don't save ax_client (not picklable)
-            ax_client_backup = self.ax_client
-            self.ax_client = None
-            pickle.dump(self, f)
-            self.ax_client = ax_client_backup
+
+        # Convert project to JSON-compatible dict
+        data = {
+            'name': self.name,
+            'created_date': self.created_date.isoformat(),
+            'modified_date': self.modified_date.isoformat(),
+            'factors': self._factors,
+            'stock_concs': self._stock_concs,
+            'per_level_concs': self._per_level_concs,
+            'design_matrix': self.design_matrix.to_dict('records') if self.design_matrix is not None else None,
+            'results_data': self.results_data.to_dict('records') if self.results_data is not None else None,
+            'clean_data': self.clean_data.to_dict('records') if self.clean_data is not None else None,
+            'response_column': self.response_column,
+            'factor_columns': self.factor_columns,
+            'categorical_factors': self.categorical_factors,
+            'numeric_factors': self.numeric_factors,
+            'optimization_history': self.optimization_history
+        }
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
 
     @classmethod
     def load(cls, filepath: str) -> 'DoEProject':
-        """Load project from file"""
-        with open(filepath, 'rb') as f:
-            project = pickle.load(f)
+        """Load project from JSON file"""
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # Create new project and populate from JSON
+        project = cls()
+        project.name = data.get('name', 'Untitled Project')
+        project.created_date = datetime.fromisoformat(data['created_date']) if data.get('created_date') else datetime.now()
+        project.modified_date = datetime.fromisoformat(data['modified_date']) if data.get('modified_date') else datetime.now()
+
+        project._factors = data.get('factors', {})
+        project._stock_concs = data.get('stock_concs', {})
+        project._per_level_concs = data.get('per_level_concs', {})
+
+        # Convert DataFrames back from dict
+        if data.get('design_matrix'):
+            project.design_matrix = pd.DataFrame(data['design_matrix'])
+        if data.get('results_data'):
+            project.results_data = pd.DataFrame(data['results_data'])
+        if data.get('clean_data'):
+            project.clean_data = pd.DataFrame(data['clean_data'])
+
+        project.response_column = data.get('response_column')
+        project.factor_columns = data.get('factor_columns', [])
+        project.categorical_factors = data.get('categorical_factors', [])
+        project.numeric_factors = data.get('numeric_factors', [])
+        project.optimization_history = data.get('optimization_history', [])
+
         return project
 
     def __repr__(self):
