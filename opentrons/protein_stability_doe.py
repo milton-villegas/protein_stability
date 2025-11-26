@@ -32,7 +32,15 @@ def add_parameters(parameters: ParameterContext):
         description="Upload CSV with reagent names (row 1) and volumes (subsequent rows)."
     )
 
-    # Transfer volume for 96→384 step
+    # Enable/disable 96→384 transfer (comes first)
+    parameters.add_bool(
+        variable_name="do_transfer_to_384",
+        display_name="Transfer to 384 Plate?",
+        description="Enable to perform 96→384 transfer after buffer preparation.",
+        default=False
+    )
+
+    # Transfer volume for 96→384 step (comes second)
     parameters.add_int(
         variable_name="transfer_volume",
         display_name="Transfer Volume (µL)",
@@ -40,14 +48,6 @@ def add_parameters(parameters: ParameterContext):
         default=50,
         minimum=1,
         maximum=112
-    )
-
-    # Enable/disable 96→384 transfer
-    parameters.add_bool(
-        variable_name="do_transfer_to_384",
-        display_name="Transfer to 384 Plate?",
-        description="Enable to perform 96→384 transfer after buffer preparation.",
-        default=True
     )
 
 # Viscous reagent profiles
@@ -529,6 +529,9 @@ def run(protocol: protocol_api.ProtocolContext):
         # Pick up tip
         p50.pick_up_tip()
 
+        # Set stronger blow out to overcome surface tension and ensure complete liquid expulsion
+        p50.flow_rate.blow_out = 250
+
         # Dispense reagent to all wells that need it
         dispense_count = 0
         for well_data in all_well_data:
@@ -542,15 +545,23 @@ def run(protocol: protocol_api.ProtocolContext):
             dest_plate = well_data['plate']
             dest_well = dest_plate[well_data['well-index']]
 
-            # Handle volumes larger than pipette capacity (50 µL for P50)
-            # Split into multiple transfers if needed
+            # Smart volume splitting for P50 pipette
             MAX_PIPETTE_VOL = 50.0
-            remaining_vol = vol
+            OVERAGE_THRESHOLD = 55.0  # Allow up to 55 µL in one transfer (10% overage)
 
-            while remaining_vol > 0:
-                # Determine transfer volume for this cycle
-                transfer_vol = min(remaining_vol, MAX_PIPETTE_VOL)
+            # Calculate how to split the volume
+            if vol <= OVERAGE_THRESHOLD:
+                # Single transfer for small overage (51-55 µL)
+                num_transfers = 1
+                transfer_vol = vol
+            else:
+                # Multiple transfers - split evenly to avoid tiny remainders
+                import math
+                num_transfers = math.ceil(vol / MAX_PIPETTE_VOL)
+                transfer_vol = vol / num_transfers
 
+            # Perform transfers
+            for _ in range(num_transfers):
                 # Aspirate from reservoir
                 p50.aspirate(transfer_vol, source)
 
@@ -559,9 +570,6 @@ def run(protocol: protocol_api.ProtocolContext):
 
                 # Blow out to ensure liquid leaves the tip
                 p50.blow_out(dest_well.top(-3))
-
-                # Update remaining volume
-                remaining_vol -= transfer_vol
 
             dispense_count += 1
 

@@ -2034,8 +2034,9 @@ class BayesianOptimizer:
                 # Well position calculation
                 plate_num = (idx // 96) + 1
                 well_idx = idx % 96
-                row_letter = chr(65 + (well_idx // 12))  # A-H
-                col_number = (well_idx % 12) + 1
+                # Column-major order: A1, B1, C1...H1, A2, B2...H12
+                row_letter = chr(65 + (well_idx % 8))  # 0-7 for A-H
+                col_number = (well_idx // 8) + 1       # 0-11 for 1-12
                 well_pos = f"{row_letter}{col_number}"
                 
                 # 384-well conversion
