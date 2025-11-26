@@ -1257,14 +1257,15 @@ class DesignerTab(ttk.Frame):
             self.plates_var.set("?")
     
     def _generate_well_position(self, idx: int) -> Tuple[int, str]:
-        """Generate 96-well plate and well position from index"""
+        """Generate 96-well plate and well position from index (column-major order)"""
         plate_num = (idx // 96) + 1
         well_idx = idx % 96
-        
-        row = chr(ord('A') + (well_idx // 12))
-        col = (well_idx % 12) + 1
+
+        # Column-major order: A1, B1, C1...H1, A2, B2...H12
+        row = chr(ord('A') + (well_idx % 8))   # 0-7 for A-H
+        col = (well_idx // 8) + 1              # 0-11 for 1-12
         well_pos = f"{row}{col}"
-        
+
         return plate_num, well_pos
     
     def _convert_96_to_384_well(self, plate_num: int, well_96: str) -> str:

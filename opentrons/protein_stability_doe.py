@@ -159,8 +159,8 @@ def parse_csv_opentrons(csv_param, protocol):
     if len(rows) < 2:
         raise ValueError(f"CSV must have ≥2 rows (headers + data). Found: {len(rows)}")
 
-    # Parse headers (row 1)
-    headers = [str(cell).strip() for cell in rows[0]]
+    # Parse headers (row 1), skip first column (ID)
+    headers = [str(cell).strip() for cell in rows[0][1:]]
     if not all(headers):
         raise ValueError("Header row must not have empty cells")
 
@@ -177,14 +177,14 @@ def parse_csv_opentrons(csv_param, protocol):
         if len(row) < len(headers):
             row += ['0'] * (len(headers) - len(row))
 
-        # Convert all cells to floats
+        # Convert all cells to floats, skip first column (ID)
         parsed_row = []
-        for j, cell in enumerate(row[:len(headers)]):
+        for j, cell in enumerate(row[1:len(headers)+1]):
             try:
                 val = float(str(cell).strip() or 0)
             except ValueError:
                 raise ValueError(
-                    f"Row {i}, column {j+1} ('{headers[j]}'): "
+                    f"Row {i}, column {j+2} ('{headers[j]}'): "
                     f"cannot convert '{cell}' to number"
                 )
             parsed_row.append(val)
@@ -529,11 +529,6 @@ def run(protocol: protocol_api.ProtocolContext):
         # Pick up tip
         p50.pick_up_tip()
 
-        # Prime tip to remove air bubbles and ensure accurate dispensing
-        p50.aspirate(PRIME_VOL, source)
-        p50.dispense(PRIME_VOL, source.top())
-        p50.blow_out(source.top())
-
         # Dispense reagent to all wells that need it
         dispense_count = 0
         for well_data in all_well_data:
@@ -559,19 +554,11 @@ def run(protocol: protocol_api.ProtocolContext):
                 # Aspirate from reservoir
                 p50.aspirate(transfer_vol, source)
 
-                # Add air gap if needed (for viscous reagents)
-                if profile['air_gap'] > 0:
-                    p50.air_gap(profile['air_gap'])
+                # Dispense near top to avoid cross-contamination (2mm below top)
+                p50.dispense(transfer_vol, dest_well.top(-2))
 
-                # Dispense to well (shallow, near top)
-                p50.dispense(
-                    transfer_vol + profile['air_gap'],
-                    dest_well.top(SHALLOW_OFFSET)
-                )
-
-                # Blow out to ensure complete dispensing
-                if BLOW_OUT_DEST:
-                    p50.blow_out(dest_well.top())
+                # Blow out to ensure liquid leaves the tip
+                p50.blow_out(dest_well.top(-3))
 
                 # Update remaining volume
                 remaining_vol -= transfer_vol
