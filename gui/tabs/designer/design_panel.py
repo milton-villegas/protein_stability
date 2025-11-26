@@ -8,7 +8,7 @@ including Latin Hypercube Sampling, Fractional Factorial, Plackett-Burman,
 Central Composite, and Box-Behnken designs.
 
 The mixin requires:
-- self.model: FactorModel instance for factor management
+- self.project: DoEProject instance for factor management
 - self.optimize_lhs_var: BooleanVar for SMT optimization preference
 """
 
@@ -137,12 +137,9 @@ class DesignPanelMixin:
                 det_conc = float(row_dict["detergent_concentration"])
 
                 # If detergent is None/empty, concentration must be 0
+                # (We allow concentration=0 for any detergent, as this means "don't add")
                 if det.lower() in ['none', '0', '', 'nan']:
                     if det_conc != 0:
-                        valid = False
-                # If detergent has a value, concentration must be > 0
-                else:
-                    if det_conc == 0:
                         valid = False
 
             # Check reducing_agent-concentration pairing
@@ -151,12 +148,9 @@ class DesignPanelMixin:
                 agent_conc = float(row_dict["reducing_agent_concentration"])
 
                 # If agent is None/empty, concentration must be 0
+                # (We allow concentration=0 for any agent, as this means "don't add")
                 if agent.lower() in ['none', '0', '', 'nan']:
                     if agent_conc != 0:
-                        valid = False
-                # If agent has a value, concentration must be > 0
-                else:
-                    if agent_conc == 0:
                         valid = False
 
             # Check buffer pH-concentration pairing

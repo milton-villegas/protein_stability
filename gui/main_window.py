@@ -95,7 +95,7 @@ class ProteinDoESuite(tk.Tk):
         """Load project from file"""
         filepath = filedialog.askopenfilename(
             title="Open Project",
-            filetypes=[("DoE Project", "*.doe"), ("All Files", "*.*")]
+            filetypes=[("DoE Project", "*.json"), ("All Files", "*.*")]
         )
 
         if filepath:
@@ -110,7 +110,7 @@ class ProteinDoESuite(tk.Tk):
                 messagebox.showerror("Project Load Failed",
                     f"Could not open the selected project file.\n\n"
                     f"Details: {str(e)}\n\n"
-                    f"Make sure the file is a valid .doe project file.")
+                    f"Make sure the file is a valid .json project file.")
 
     def _save_project(self):
         """Save current project"""
@@ -121,12 +121,18 @@ class ProteinDoESuite(tk.Tk):
         """Save project to new file"""
         filepath = filedialog.asksaveasfilename(
             title="Save Project",
-            defaultextension=".doe",
-            filetypes=[("DoE Project", "*.doe"), ("All Files", "*.*")]
+            defaultextension=".json",
+            filetypes=[("DoE Project", "*.json"), ("All Files", "*.*")]
         )
 
         if filepath:
             try:
+                # Update project name from filename
+                import os
+                filename = os.path.basename(filepath)
+                project_name = os.path.splitext(filename)[0]
+                self.project.name = project_name
+
                 self.project.save(filepath)
                 self.update_status(f"Saved: {filepath}")
             except Exception as e:

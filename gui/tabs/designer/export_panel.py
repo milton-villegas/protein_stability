@@ -32,7 +32,7 @@ class ExportPanelMixin:
     Excel (.xlsx) and CSV formats suitable for Opentrons liquid handling.
 
     Attributes expected from parent class:
-        self.model: DesignerModel instance
+        self.project: DoEProject instance
         self.main_window: Main application window
         self.final_vol_var: tkinter variable for final volume
         self.design_type_var: tkinter variable for design type
@@ -172,7 +172,7 @@ class ExportPanelMixin:
 
         return volume_headers
 
-    def _build_factorial_with_volumes(self) -> Tuple[List[str], List[List], List[str], List[List]]:
+    def _build_factorial_with_volumes(self) -> Tuple[List[str], List[List], List[str], List[List], List[Tuple]]:
         """
         Build factorial design (full or LHS) and calculate volumes.
 
@@ -182,12 +182,12 @@ class ExportPanelMixin:
                 - excel_rows: List of data rows for Excel export
                 - volume_headers: List of column headers for volume CSV
                 - volume_rows: List of volume data rows for Opentrons CSV
+                - negative_water_wells: List of (well_id, well_pos, water_vol) tuples for problematic wells
 
         Raises:
-            ValueError: If no factors defined, invalid volume, sample size issues,
-                       or impossible design (negative water volumes)
+            ValueError: If no factors defined, invalid volume, or sample size issues
         """
-        factors = self.model.get_factors()
+        factors = self.project.get_factors()
         if not factors:
             raise ValueError("No factors defined.")
 
@@ -197,24 +197,32 @@ class ExportPanelMixin:
         except ValueError:
             raise ValueError("Invalid final volume value.")
 
-        stock_concs = self.model.get_all_stock_concs()
+        stock_concs = self.project.get_all_stock_concs()
 
         # Check for per-level concentrations (when used, detergent_concentration has placeholder levels)
-        per_level_concs = self.model.get_all_per_level_concs()
+        per_level_concs = self.project.get_all_per_level_concs()
 
         # Validate that detergent factor exists when per-level concs are used
+        # Also, exclude concentration factors from design when per-level mode is active
         if "detergent" in per_level_concs and per_level_concs["detergent"]:
             if "detergent" not in factors:
                 raise ValueError(
                     "Per-level concentrations are configured but 'Detergent' factor is missing.\n\n"
                     "Please add the 'Detergent' factor with the detergent types (DDM, LMNG, etc.)."
                 )
+            # Remove detergent_concentration from factors if it exists (per-level mode)
+            if "detergent_concentration" in factors:
+                factors = {k: v for k, v in factors.items() if k != "detergent_concentration"}
+
         if "reducing_agent" in per_level_concs and per_level_concs["reducing_agent"]:
             if "reducing_agent" not in factors:
                 raise ValueError(
                     "Per-level concentrations are configured but 'Reducing Agent' factor is missing.\n\n"
                     "Please add the 'Reducing Agent' factor with the types (DTT, TCEP, etc.)."
                 )
+            # Remove reducing_agent_concentration from factors if it exists (per-level mode)
+            if "reducing_agent_concentration" in factors:
+                factors = {k: v for k, v in factors.items() if k != "reducing_agent_concentration"}
 
         # Get design type and generate combinations
         display_text = self.design_type_var.get()
@@ -363,7 +371,7 @@ class ExportPanelMixin:
                 # Only add volume if detergent is not None/empty
                 if detergent_type and detergent_type.lower() not in ['none', '0', 'nan', '']:
                     # Check for per-level concentrations first
-                    per_level_concs = self.model.get_per_level_concs("detergent")
+                    per_level_concs = self.project.get_per_level_concs("detergent")
                     if per_level_concs and detergent_type in per_level_concs:
                         # Use per-level stock and final concentrations
                         try:
@@ -402,7 +410,7 @@ class ExportPanelMixin:
                 # Only add volume if reducing agent is not None/empty
                 if agent_type and agent_type.lower() not in ['none', '0', 'nan', '']:
                     # Check for per-level concentrations first
-                    per_level_concs = self.model.get_per_level_concs("reducing_agent")
+                    per_level_concs = self.project.get_per_level_concs("reducing_agent")
                     if per_level_concs and agent_type in per_level_concs:
                         # Use per-level stock and final concentrations
                         try:
@@ -480,31 +488,8 @@ class ExportPanelMixin:
                 well_pos = excel_rows[idx][2]  # Well position
                 negative_water_wells.append((well_id, well_pos, water_vol))
 
-        if negative_water_wells:
-            # Build error message for impossible designs
-            error_msg = "IMPOSSIBLE DESIGN DETECTED\n\n"
-            error_msg += f"The following wells require NEGATIVE water volumes:\n\n"
-
-            # Show problematic wells
-            for well_id, well_pos, water_vol in negative_water_wells[:5]:
-                error_msg += f"  - Well {well_pos} (ID {well_id}): {water_vol} uL water\n"
-
-            if len(negative_water_wells) > 5:
-                error_msg += f"  ... and {len(negative_water_wells) - 5} more wells\n"
-
-            error_msg += f"\nTotal problematic wells: {len(negative_water_wells)}\n\n"
-            error_msg += "This means the sum of component volumes EXCEEDS the final volume!\n\n"
-            error_msg += "Solutions:\n"
-            error_msg += "  1. INCREASE stock concentrations (recommended)\n"
-            error_msg += "  2. INCREASE final volume\n"
-            error_msg += "  3. REDUCE desired concentration levels\n\n"
-            error_msg += "Example: If stock is 50 mM and you want 100 mM,\n"
-            error_msg += "you'd need to add 200 uL of stock to make 100 uL final volume.\n"
-            error_msg += "This is physically impossible!"
-
-            raise ValueError(error_msg)
-
-        return excel_headers, excel_rows, volume_headers, volume_rows
+        # Return all data including conflict information
+        return excel_headers, excel_rows, volume_headers, volume_rows, negative_water_wells
 
     def _export_both(self):
         """
@@ -525,11 +510,11 @@ class ExportPanelMixin:
 
         try:
             # Validate stock concentrations
-            factors = self.model.get_factors()
-            stock_concs = self.model.get_all_stock_concs()
+            factors = self.project.get_factors()
+            stock_concs = self.project.get_all_stock_concs()
 
             missing_stocks = []
-            per_level_concs = self.model.get_all_per_level_concs()
+            per_level_concs = self.project.get_all_per_level_concs()
 
             for factor in factors.keys():
                 # Skip categorical factors that don't need stock concentrations
@@ -553,7 +538,10 @@ class ExportPanelMixin:
                 return
 
             # Build design
-            excel_headers, excel_rows, volume_headers, volume_rows = self._build_factorial_with_volumes()
+            excel_headers, excel_rows, volume_headers, volume_rows, negative_water_wells = self._build_factorial_with_volumes()
+
+            # Check for volume conflicts
+            has_conflicts = len(negative_water_wells) > 0
 
             total = len(excel_rows)
             if total > 384:
@@ -562,6 +550,22 @@ class ExportPanelMixin:
                     f"Maximum: 384 (4 plates of 96 wells)\n\n"
                     f"Please reduce factors/levels or sample size.")
                 return
+
+            # If there are volume conflicts, show warning BEFORE file dialog
+            export_csv = True  # By default, export both files
+            if has_conflicts:
+                warning_msg = f"⚠️ WARNING: Volume Conflicts Detected\n\n"
+                warning_msg += f"Problem: {len(negative_water_wells)} wells have negative water volumes\n\n"
+                warning_msg += "What will be exported:\n"
+                warning_msg += "  ✅ Excel file - WITH Warning sheet for review\n"
+                warning_msg += "  ❌ CSV file - SKIPPED (cannot be used by robot)\n\n"
+                warning_msg += "Fix the issues, then export again to get the CSV file.\n\n"
+                warning_msg += "Do you want to export Excel with diagnostics?"
+
+                response = messagebox.askyesno("Volume Conflicts", warning_msg, icon='warning')
+                if not response:
+                    return  # User cancelled
+                export_csv = False  # Skip CSV export
 
             # Single-step file save dialog with suggested name
             date_str = datetime.now().strftime('%Y%m%d')
@@ -655,11 +659,17 @@ class ExportPanelMixin:
                 row_idx += 1
 
             # Write per-level concentrations (same uniform format, just with Level filled in)
-            all_per_level = self.model.get_all_per_level_concs()
+            all_per_level = self.project.get_all_per_level_concs()
             if all_per_level:
+                # Debug: Print what we have
+                print(f"[DEBUG] Per-level concentrations: {all_per_level}")
+
                 for factor_name, level_concs in all_per_level.items():
                     if not level_concs:
                         continue
+
+                    print(f"[DEBUG] Processing factor: {factor_name}")
+                    print(f"[DEBUG] Level data: {level_concs}")
 
                     # Get concentration factor display name and unit
                     if factor_name == "detergent":
@@ -669,12 +679,15 @@ class ExportPanelMixin:
                         conc_factor = "reducing_agent_concentration"
                         unit = "mM"
                     else:
+                        print(f"[DEBUG] Skipping unknown factor: {factor_name}")
                         continue
 
                     display_name = AVAILABLE_FACTORS.get(conc_factor, conc_factor)
+                    print(f"[DEBUG] Display name: {display_name}, Unit: {unit}")
 
                     # Write one row per level: Factor Name | Level | Stock Value | Final Value | Unit
                     for level, conc_data in level_concs.items():
+                        print(f"[DEBUG] Writing level '{level}': {conc_data}")
                         stock_sheet.cell(row=row_idx, column=1, value=display_name)
                         stock_sheet.cell(row=row_idx, column=2, value=level)
                         stock_sheet.cell(row=row_idx, column=3, value=conc_data.get("stock", ""))
@@ -740,14 +753,19 @@ class ExportPanelMixin:
                 adjusted_width = min(max_length + 2, 30)
                 stock_sheet.column_dimensions[col_letter].width = adjusted_width
 
+            # Add Warning sheet if there are volume conflicts
+            if has_conflicts:
+                self._add_warning_sheet(wb, negative_water_wells, excel_rows, volume_headers, volume_rows)
+
             wb.save(xlsx_path)
 
-            # Export CSV
-            with open(csv_path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                writer.writerow(volume_headers)
-                for vol_row in volume_rows:
-                    writer.writerow(vol_row)
+            # Export CSV only if no conflicts
+            if export_csv:
+                with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(volume_headers)
+                    for vol_row in volume_rows:
+                        writer.writerow(vol_row)
 
             plates = (total + 95) // 96
 
@@ -784,18 +802,100 @@ class ExportPanelMixin:
 
             # Extract filenames and directory for clean message
             xlsx_filename = os.path.basename(xlsx_path)
-            csv_filename = os.path.basename(csv_path)
             directory = os.path.dirname(xlsx_path)
 
-            messagebox.showinfo("Export Complete",
-                f"Files saved:\n\n"
-                f"    {xlsx_filename}\n"
-                f"    {csv_filename}\n\n"
-                f"Location:\n"
-                f"    {directory}")
+            if export_csv:
+                csv_filename = os.path.basename(csv_path)
+                messagebox.showinfo("Export Complete",
+                    f"Files saved:\n\n"
+                    f"    {xlsx_filename}\n"
+                    f"    {csv_filename}\n\n"
+                    f"Location:\n"
+                    f"    {directory}")
+            else:
+                messagebox.showinfo("Export Complete",
+                    f"Excel file saved with Warning sheet:\n\n"
+                    f"    {xlsx_filename}\n\n"
+                    f"Location:\n"
+                    f"    {directory}\n\n"
+                    f"⚠️ CSV not exported due to volume conflicts.\n"
+                    f"Review the Warning sheet, fix issues, and export again.")
 
         except Exception as e:
             messagebox.showerror("Export Failed", f"Error during export:\n\n{str(e)}")
+
+    def _add_warning_sheet(self, wb, negative_water_wells, excel_rows, volume_headers, volume_rows):
+        """Add a Warning sheet to the workbook with details about volume conflicts"""
+        ws = wb.create_sheet(title="⚠️ WARNINGS")
+
+        # Title
+        ws['A1'] = "DESIGN VALIDATION REPORT"
+        ws['A1'].font = Font(bold=True, size=14, color="FF0000")
+        ws['A2'] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+        # Summary section
+        ws['A4'] = "VOLUME CONFLICTS DETECTED"
+        ws['A4'].font = Font(bold=True, size=12, color="FF6600")
+        ws['A5'] = f"Total wells in design: {len(excel_rows)}"
+        ws['A6'] = f"Problematic wells: {len(negative_water_wells)}"
+        ws['A7'] = "Status: ❌ NOT READY FOR ROBOT"
+        ws['A7'].font = Font(bold=True, color="FF0000")
+
+        # Affected wells table
+        ws['A9'] = "AFFECTED WELLS:"
+        ws['A9'].font = Font(bold=True, size=11)
+
+        # Table headers
+        headers = ['Well', 'ID', 'Water (µL)'] + [h for h in volume_headers if h not in ['ID', 'Plate_96', 'Well_96', 'water']]
+        for col_idx, header in enumerate(headers, start=1):
+            cell = ws.cell(row=10, column=col_idx, value=header)
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill(start_color="FFE0E0", end_color="FFE0E0", fill_type="solid")
+
+        # Affected well data
+        for row_idx, (well_id, well_pos, water_vol) in enumerate(negative_water_wells, start=11):
+            # Find the corresponding row in excel_rows and volume_rows
+            for idx, excel_row in enumerate(excel_rows):
+                if excel_row[0] == well_id:  # Match by ID
+                    volume_row = volume_rows[idx]
+
+                    # Well position and ID
+                    ws.cell(row=row_idx, column=1, value=well_pos)
+                    ws.cell(row=row_idx, column=2, value=well_id)
+                    ws.cell(row=row_idx, column=3, value=water_vol)
+
+                    # Add volumes for each reagent
+                    col_offset = 4
+                    for vol_idx, vol_header in enumerate(volume_headers):
+                        if vol_header not in ['ID', 'Plate_96', 'Well_96', 'water']:
+                            ws.cell(row=row_idx, column=col_offset, value=volume_row[vol_idx])
+                            col_offset += 1
+                    break
+
+        # Recommendations section
+        rec_row = 11 + len(negative_water_wells) + 2
+        ws.cell(row=rec_row, column=1, value="NEXT STEPS:")
+        ws.cell(row=rec_row, column=1).font = Font(bold=True, size=11)
+
+        ws.cell(row=rec_row+1, column=1, value="1. Return to Design tab")
+        ws.cell(row=rec_row+2, column=1, value="2. Increase stock concentrations for high-volume reagents")
+        ws.cell(row=rec_row+3, column=1, value="3. Or increase final volume")
+        ws.cell(row=rec_row+4, column=1, value="4. Re-export design")
+        ws.cell(row=rec_row+5, column=1, value="5. Verify this Warning sheet is gone")
+        ws.cell(row=rec_row+6, column=1, value="6. CSV file will be exported when conflicts are resolved")
+
+        # Adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if cell.value and len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 40)
+            ws.column_dimensions[column_letter].width = adjusted_width
 
     def export_excel(self):
         """Export design to Excel (called from main window menu)."""

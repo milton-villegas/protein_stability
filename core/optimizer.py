@@ -351,6 +351,10 @@ class BayesianOptimizer:
                 if self.DEBUG and idx == 0:
                     print(f"  ⚠️  No ID column found, using pandas index + 1 as ID (1-based)")
 
+            # Convert ID to Python int (handles numpy types from DataFrame)
+            if exp_id is not None:
+                exp_id = int(exp_id)
+
             metadata = {
                 'row_index': idx,
                 'id': exp_id,
