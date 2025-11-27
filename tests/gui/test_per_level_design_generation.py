@@ -8,7 +8,19 @@ import pytest
 import pandas as pd
 from unittest.mock import Mock, MagicMock, patch
 from gui.tabs.designer.models import FactorModel
+from gui.tabs.designer.design_panel import DesignPanelMixin
 import tkinter as tk
+
+
+# Wrapper class to make DesignPanelMixin testable (not a Test* class to avoid pytest collection)
+class DesignPanelWrapper(DesignPanelMixin):
+    """Minimal wrapper to test DesignPanelMixin in isolation"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.model = parent.model
+        # Use Mock for BooleanVar to avoid tkinter root issues
+        self.optimize_lhs_var = Mock()
+        self.optimize_lhs_var.get = Mock(return_value=False)
 
 
 @pytest.fixture
@@ -91,7 +103,7 @@ class TestPerLevelDesignGeneration:
 
     def test_lhs_sample_count_with_per_level(self, model_with_per_level):
         """Test that LHS generates correct number of samples with per-level concentrations"""
-        from gui.tabs.designer.design_panel import DesignPanel
+        
 
         factors = model_with_per_level.get_factors()
         per_level_concs = model_with_per_level.get_all_per_level_concs()
@@ -104,7 +116,7 @@ class TestPerLevelDesignGeneration:
         # Now generate LHS design
         mock_parent = Mock()
         mock_parent.model = model_with_per_level
-        design_panel = DesignPanel(mock_parent)
+        design_panel = DesignPanelWrapper(mock_parent)
 
         n_samples = 96
         combinations = design_panel._generate_lhs_design(factors, n_samples)
@@ -119,7 +131,7 @@ class TestPerLevelDesignGeneration:
 
     def test_lhs_space_filling_property_maintained(self, model_with_per_level):
         """Test that LHS maintains space-filling property when concentration factor is excluded"""
-        from gui.tabs.designer.design_panel import DesignPanel
+        
 
         factors = model_with_per_level.get_factors()
         per_level_concs = model_with_per_level.get_all_per_level_concs()
@@ -131,7 +143,7 @@ class TestPerLevelDesignGeneration:
 
         mock_parent = Mock()
         mock_parent.model = model_with_per_level
-        design_panel = DesignPanel(mock_parent)
+        design_panel = DesignPanelWrapper(mock_parent)
 
         n_samples = 50
         combinations = design_panel._generate_lhs_design(factors, n_samples)
@@ -157,7 +169,7 @@ class TestPerLevelDesignGeneration:
 
     def test_d_optimal_sample_count_with_per_level(self, model_with_per_level):
         """Test that D-Optimal generates correct number of samples with per-level concentrations"""
-        from gui.tabs.designer.design_panel import DesignPanel
+        
 
         factors = model_with_per_level.get_factors()
         per_level_concs = model_with_per_level.get_all_per_level_concs()
@@ -169,7 +181,7 @@ class TestPerLevelDesignGeneration:
 
         mock_parent = Mock()
         mock_parent.model = model_with_per_level
-        design_panel = DesignPanel(mock_parent)
+        design_panel = DesignPanelWrapper(mock_parent)
 
         n_samples = 48
         try:
@@ -205,7 +217,7 @@ class TestPerLevelDesignGeneration:
 
     def test_filter_does_not_remove_combinations_in_per_level_mode(self, model_with_per_level):
         """Test that the filter doesn't remove any combinations when concentration factors are excluded"""
-        from gui.tabs.designer.design_panel import DesignPanel
+        
 
         factors = model_with_per_level.get_factors()
         per_level_concs = model_with_per_level.get_all_per_level_concs()
@@ -217,7 +229,7 @@ class TestPerLevelDesignGeneration:
 
         mock_parent = Mock()
         mock_parent.model = model_with_per_level
-        design_panel = DesignPanel(mock_parent)
+        design_panel = DesignPanelWrapper(mock_parent)
 
         # Generate some combinations (using full factorial for simplicity)
         import itertools
@@ -290,7 +302,7 @@ class TestNormalModeNotAffected:
 
     def test_filter_still_removes_invalid_pairings_in_normal_mode(self):
         """Test that filter still works in normal mode to remove invalid pairings"""
-        from gui.tabs.designer.design_panel import DesignPanel
+        
 
         model = FactorModel()
         model.add_factor("detergent", ["None", "DDM"])
@@ -300,7 +312,7 @@ class TestNormalModeNotAffected:
 
         mock_parent = Mock()
         mock_parent.model = model
-        design_panel = DesignPanel(mock_parent)
+        design_panel = DesignPanelWrapper(mock_parent)
 
         # Full factorial: 2 * 2 = 4 combinations
         import itertools
@@ -313,6 +325,7 @@ class TestNormalModeNotAffected:
         filtered = design_panel._filter_categorical_combinations(combinations, factor_names)
 
         # Should remove invalid pairings:
-        # Valid: (None, 0), (DDM, 1.0)
-        # Invalid: (None, 1.0), (DDM, 0)
-        assert len(filtered) == 2, f"Expected 2 valid combinations, got {len(filtered)}"
+        # Valid: (None, 0), (DDM, 0), (DDM, 1.0)
+        # Invalid: (None, 1.0) - None can't have concentration
+        # Note: (DDM, 0) is valid - it means "don't add DDM" (concentration=0 allowed for any detergent)
+        assert len(filtered) == 3, f"Expected 3 valid combinations, got {len(filtered)}"
