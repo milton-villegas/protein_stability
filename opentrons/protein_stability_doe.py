@@ -107,45 +107,45 @@ def parse_csv_opentrons(csv_param, protocol):
     import csv as csv_module
 
     rows = None
-    protocol.comment(f"CSV type: {type(csv_param).__name__}")
+    protocol.comment(f"INFO: CSV parameter type: {type(csv_param).__name__}")
 
     # Method 1: .rows attribute (newer API)
     if hasattr(csv_param, "rows") and csv_param.rows:
         rows = csv_param.rows
-        protocol.comment("Using .rows attribute")
+        protocol.comment("INFO: CSV parsing method: .rows attribute")
 
     # Method 2: .data attribute
     elif hasattr(csv_param, "data") and csv_param.data:
         rows = csv_param.data
-        protocol.comment("Using .data attribute")
+        protocol.comment("INFO: CSV parsing method: .data attribute")
 
     # Method 3: .parse_as_csv() method
     elif hasattr(csv_param, "parse_as_csv"):
         rows = csv_param.parse_as_csv()
-        protocol.comment("Using .parse_as_csv() method")
+        protocol.comment("INFO: CSV parsing method: .parse_as_csv()")
 
     # Method 4: Direct string content
     elif isinstance(csv_param, str):
         rows = list(csv_module.reader(csv_param.strip().splitlines()))
-        protocol.comment("Parsed as string")
+        protocol.comment("INFO: CSV parsing method: Direct string")
 
     # Method 5: .contents or .content attribute
     elif hasattr(csv_param, "contents"):
         csv_text = csv_param.contents
         rows = list(csv_module.reader(csv_text.strip().splitlines()))
-        protocol.comment("Using .contents attribute")
+        protocol.comment("INFO: CSV parsing method: .contents attribute")
 
     elif hasattr(csv_param, "content"):
         csv_text = csv_param.content
         rows = list(csv_module.reader(csv_text.strip().splitlines()))
-        protocol.comment("Using .content attribute")
+        protocol.comment("INFO: CSV parsing method: .content attribute")
 
     # Method 6: String conversion as last resort
     else:
         try:
             csv_text = str(csv_param)
             rows = list(csv_module.reader(csv_text.strip().splitlines()))
-            protocol.comment("Using str() conversion")
+            protocol.comment("INFO: CSV parsing method: str() conversion")
         except Exception as e:
             protocol.comment(f"ERROR: Could not parse CSV - {str(e)}")
             raise ValueError("Could not extract data from CSV parameter")
@@ -153,7 +153,7 @@ def parse_csv_opentrons(csv_param, protocol):
     if not rows:
         raise ValueError("CSV parsing failed - no data extracted")
 
-    protocol.comment(f"CSV has {len(rows)} total rows")
+    protocol.comment(f"INFO: CSV has {len(rows)} total rows")
 
     # Validate structure
     if len(rows) < 2:
@@ -164,7 +164,7 @@ def parse_csv_opentrons(csv_param, protocol):
     if not all(headers):
         raise ValueError("Header row must not have empty cells")
 
-    protocol.comment(f"Found {len(headers)} reagents: {', '.join(headers[:3])}...")
+    protocol.comment(f"INFO: Found {len(headers)} reagents: {', '.join(headers[:3])}...")
 
     # Parse data rows (rows 2+)
     data_rows = []
@@ -194,7 +194,7 @@ def parse_csv_opentrons(csv_param, protocol):
     if not data_rows:
         raise ValueError("CSV has no valid data rows after headers")
 
-    protocol.comment(f"Parsed {len(data_rows)} buffer conditions")
+    protocol.comment(f"INFO: Parsed {len(data_rows)} buffer conditions")
     return headers, data_rows
 
 
@@ -215,8 +215,7 @@ def map_reagents_to_24well_reservoir(reagent_names, protocol):
     """Map reagents to 24-well reservoir positions"""
     if len(reagent_names) > 24:
         protocol.comment(
-            f"ERROR: CSV has {len(reagent_names)} reagents "
-            f"but reservoir only holds 24"
+            f"ERROR: CSV has {len(reagent_names)} reagents but reservoir only holds 24."
         )
         return None
 
@@ -266,12 +265,12 @@ def run(protocol: protocol_api.ProtocolContext):
 
     # HEADER
 
-    protocol.comment("PROTEIN STABILITY DOE v1.0")
-    protocol.comment("Automated Buffer Preparation")
+    protocol.comment("--- PROTEIN STABILITY DOE v1.0 ---")
+    protocol.comment("--- Automated Buffer Preparation ---")
 
     # LOAD PARAMETERS
 
-    protocol.comment("Loading parameters...")
+    protocol.comment("--- LOADING PARAMETERS ---")
     buffer_csv = protocol.params.buffer_csv
     # Transfer parameters
     start_384_col = 1  # Always start from column 1
@@ -280,13 +279,13 @@ def run(protocol: protocol_api.ProtocolContext):
 
     # PARSE CSV FILE
 
-    protocol.comment("PARSING CSV FILE")
+    protocol.comment("--- PARSING CSV FILE ---")
 
     try:
         headers, data_rows = parse_csv_opentrons(buffer_csv, protocol)
     except Exception as e:
-        protocol.comment(f"FATAL ERROR parsing CSV: {str(e)}")
-        protocol.comment("Please check your CSV file format and try again.")
+        protocol.comment(f"ERROR: Failed to parse CSV file. Please check its format.")
+        protocol.comment(f"  DETAILS: {e}")
         return
 
 
@@ -297,20 +296,20 @@ def run(protocol: protocol_api.ProtocolContext):
         num_plates = calculate_plates_needed(num_conditions)
         columns_needed = math.ceil(num_conditions / 8)
 
-        protocol.comment("AUTOMATIC PLATE CALCULATION")
-        protocol.comment(f"  Conditions in CSV: {num_conditions}")
-        protocol.comment(f"  Columns needed: {columns_needed} (8 wells/column)")
-        protocol.comment(f"  Plates required: {num_plates}")
+        protocol.comment("--- AUTOMATIC PLATE CALCULATION ---")
+        protocol.comment(f"INFO: Conditions in CSV: {num_conditions}")
+        protocol.comment(f"INFO: Columns needed: {columns_needed} (8 wells/column)")
+        protocol.comment(f"INFO: Plates required: {num_plates}")
 
     except ValueError as e:
-        protocol.comment(f"FATAL ERROR: {str(e)}")
+        protocol.comment(f"ERROR: {e}")
         return
 
     # VALIDATE TRANSFER VOLUME
 
     if user_transfer_vol > 112:
-        protocol.comment(f"Warning: Transfer volume ({user_transfer_vol}µL) exceeds")
-        protocol.comment(f"   384-well capacity (112µL). Capping at 112µL.")
+        protocol.comment(f"WARNING: Transfer volume ({user_transfer_vol}µL) exceeds 384-well capacity.")
+        protocol.comment(f"  INFO: Capping volume at 112µL.")
         user_transfer_vol = 112
 
     # PROTOCOL SETTINGS
@@ -328,7 +327,7 @@ def run(protocol: protocol_api.ProtocolContext):
 
     # LOAD LABWARE
 
-    protocol.comment("LOADING LABWARE")
+    protocol.comment("--- LOADING LABWARE ---")
 
     # 96-well plates
     plates_96 = []
@@ -339,7 +338,7 @@ def run(protocol: protocol_api.ProtocolContext):
                 '96-well Plate #1'
             )
         )
-        protocol.comment("  Slot 1: 96-well Plate #1")
+        protocol.comment("INFO: Slot 1: 96-well Plate #1")
 
     if num_plates >= 2:
         plates_96.append(
@@ -348,7 +347,7 @@ def run(protocol: protocol_api.ProtocolContext):
                 '96-well Plate #2'
             )
         )
-        protocol.comment("  Slot 3: 96-well Plate #2")
+        protocol.comment("INFO: Slot 3: 96-well Plate #2")
 
     if num_plates >= 3:
         plates_96.append(
@@ -357,7 +356,7 @@ def run(protocol: protocol_api.ProtocolContext):
                 '96-well Plate #3'
             )
         )
-        protocol.comment("  Slot 4: 96-well Plate #3")
+        protocol.comment("INFO: Slot 4: 96-well Plate #3")
 
     if num_plates >= 4:
         plates_96.append(
@@ -366,26 +365,26 @@ def run(protocol: protocol_api.ProtocolContext):
                 '96-well Plate #4'
             )
         )
-        protocol.comment("  Slot 6: 96-well Plate #4")
+        protocol.comment("INFO: Slot 6: 96-well Plate #4")
 
     # 384-well plate
     plate384 = protocol.load_labware(
         'corning_384_wellplate_112ul_flat', 2,
         '384-well Destination'
     )
-    protocol.comment("  Slot 2: 384-well Plate")
+    protocol.comment("INFO: Slot 2: 384-well Plate")
 
     # Reagent reservoir
     reservoir = protocol.load_labware(
         'cytiva_24_reservoir_10ml', 5,
         '24-well Reservoir'
     )
-    protocol.comment("  Slot 5: 24-well Reservoir")
+    protocol.comment("INFO: Slot 5: 24-well Reservoir")
 
     # Tip racks - Single channel
     tiprack_sc_1 = protocol.load_labware('opentrons_96_tiprack_300ul', 9,
                                          'Single channel tips')
-    protocol.comment("  Slot 9: Single channel tips")
+    protocol.comment("INFO: Slot 9: Single channel tips")
     
     # Tip racks - Multichannel
 
@@ -395,31 +394,31 @@ def run(protocol: protocol_api.ProtocolContext):
         tiprack_mc_1 = protocol.load_labware('opentrons_96_tiprack_300ul', 8,
                                              'Multichannel tips (rack 1)')
         tiprack_mc_list.append(tiprack_mc_1)
-        protocol.comment("  Slot 8: Multichannel tips (rack 1)")
+        protocol.comment("INFO: Slot 8: Multichannel tips (rack 1)")
     
     if num_plates >= 2:
         tiprack_mc_2 = protocol.load_labware('opentrons_96_tiprack_300ul', 7,
                                              'Multichannel tips (rack 2)')
         tiprack_mc_list.append(tiprack_mc_2)
-        protocol.comment("  Slot 7: Multichannel tips (rack 2)")
+        protocol.comment("INFO: Slot 7: Multichannel tips (rack 2)")
     
     if num_plates >= 3:
         tiprack_mc_3 = protocol.load_labware('opentrons_96_tiprack_300ul', 11,
                                              'Multichannel tips (rack 3)')
         tiprack_mc_list.append(tiprack_mc_3)
-        protocol.comment("  Slot 11: Multichannel tips (rack 3)")
+        protocol.comment("INFO: Slot 11: Multichannel tips (rack 3)")
     
     if num_plates >= 4:
         tiprack_mc_4 = protocol.load_labware('opentrons_96_tiprack_300ul', 10,
                                              'Multichannel tips (rack 4)')
         tiprack_mc_list.append(tiprack_mc_4)
-        protocol.comment("  Slot 10: Multichannel tips (rack 4)")
+        protocol.comment("INFO: Slot 10: Multichannel tips (rack 4)")
     
     protocol.comment("")
 
     # LOAD PIPETTES
 
-    protocol.comment("LOADING PIPETTES")
+    protocol.comment("--- LOADING PIPETTES ---")
 
     # Single channel
     p50 = protocol.load_instrument(
@@ -430,7 +429,7 @@ def run(protocol: protocol_api.ProtocolContext):
     # Set clearance heights to avoid hitting bottom/top
     p50.well_bottom_clearance.aspirate = ASP_CLEAR
     p50.well_bottom_clearance.dispense = DISP_CLEAR
-    protocol.comment("  Right mount: P50 Single (GEN1)")
+    protocol.comment("INFO: Right mount: P50 Single (GEN1)")
 
     # Multichannel
     m300 = protocol.load_instrument(
@@ -441,7 +440,7 @@ def run(protocol: protocol_api.ProtocolContext):
     m300.flow_rate.aspirate = 30
     m300.flow_rate.dispense = 30
     m300.well_bottom_clearance.aspirate = 0.5
-    protocol.comment("  Left mount: P300 Multichannel")
+    protocol.comment("INFO: Left mount: P300 Multichannel")
 
     # MAP REAGENTS TO RESERVOIR
 
@@ -456,16 +455,16 @@ def run(protocol: protocol_api.ProtocolContext):
             volume_totals[headers[i]] += vol
 
     # Display reservoir setup
-    protocol.comment("RESERVOIR SETUP")
-    protocol.comment("  Please load reagents as follows:")
+    protocol.comment("--- RESERVOIR SETUP ---")
+    protocol.comment("INFO: Please load reagents as follows:")
 
     for reagent, well in reagent_mapping.items():
         profile = get_reagent_profile(reagent)
         total_vol = volume_totals[reagent] / 1000  # Convert to mL
         viscous_flag = " [VISCOUS]" if profile != DEFAULT_RATES else ""
-        protocol.comment(f"  {well}: {reagent:<20} ({total_vol:>5.2f} mL){viscous_flag}")
+        protocol.comment(f"  INFO: {well}: {reagent:<20} ({total_vol:>5.2f} mL){viscous_flag}")
 
-    protocol.comment("  Note: [VISCOUS] reagents use adjusted flow rates")
+    protocol.comment("  NOTE: [VISCOUS] reagents use adjusted flow rates.")
 
     # CREATE WELL DATA STRUCTURE
 
@@ -497,15 +496,34 @@ def run(protocol: protocol_api.ProtocolContext):
 
             all_well_data.append(well_data)
 
-    protocol.comment(f"Preparing {len(all_well_data)} wells across {len(plates_96)} plate(s)")
+    protocol.comment(f"INFO: Preparing {len(all_well_data)} wells across {len(plates_96)} plate(s)")
 
     # PHASE 1: BUFFER PREPARATION
 
-    protocol.comment("PHASE 1: BUFFER PREPARATION")
+    protocol.comment("--- PHASE 1: BUFFER PREPARATION ---")
+
+    # --- Smart Reagent Reordering ---
+    # To minimize evaporation, dispense the reagent with the highest total volume first.
+    reagent_order = list(headers)  # Copy headers to a new modifiable list
+    bulking_agent = None
+
+    if volume_totals:
+        # Find the reagent with the maximum total volume
+        bulking_agent = max(volume_totals, key=volume_totals.get)
+
+    if bulking_agent:
+        reagent_order.remove(bulking_agent)
+        reagent_order.insert(0, bulking_agent)
+        protocol.comment(f"NOTE: '{bulking_agent}' has the highest total volume and will be dispensed first.")
+    else:
+        protocol.comment("NOTE: Could not determine bulking agent. Dispensing in CSV order.")
+
+    protocol.comment("INFO: Final dispense order: " + ", ".join(reagent_order))
+    # --- End Smart Reordering ---
 
     # Process each reagent one at a time
-    for reagent_idx, reagent in enumerate(headers):
-        protocol.comment(f"  Reagent {reagent_idx + 1}/{len(headers)}: {reagent}")
+    for reagent_idx, reagent in enumerate(reagent_order):
+        protocol.comment(f"INFO: Reagent {reagent_idx + 1}/{len(headers)}: {reagent}")
 
         # Get source well from reservoir
         source_well = reagent_mapping[reagent]
@@ -518,13 +536,13 @@ def run(protocol: protocol_api.ProtocolContext):
         p50.flow_rate.aspirate = profile['asp_rate']
         p50.flow_rate.dispense = profile['disp_rate']
 
-        protocol.comment(f"  Source: {source_well}")
+        protocol.comment(f"INFO: Source: {source_well}")
         if profile != DEFAULT_RATES:
             protocol.comment(
-                f"  Flow rates: {profile['asp_rate']}/{profile['disp_rate']} µL/s "
+                f"  INFO: Flow rates: {profile['asp_rate']}/{profile['disp_rate']} µL/s "
                 f"(aspirate/dispense)"
             )
-            protocol.comment(f"  Air gap: {profile['air_gap']} µL")
+            protocol.comment(f"  INFO: Air gap: {profile['air_gap']} µL")
 
         # Pick up tip
         p50.pick_up_tip()
@@ -547,16 +565,15 @@ def run(protocol: protocol_api.ProtocolContext):
 
             # Smart volume splitting for P50 pipette
             MAX_PIPETTE_VOL = 50.0
-            OVERAGE_THRESHOLD = 55.0  # Allow up to 55 µL in one transfer (10% overage)
+            OVERAGE_THRESHOLD = 50.0  # Threshold for a single transfer, must not exceed pipette's max volume.
 
             # Calculate how to split the volume
             if vol <= OVERAGE_THRESHOLD:
-                # Single transfer for small overage (51-55 µL)
+                # Single transfer for volumes up to the threshold.
                 num_transfers = 1
                 transfer_vol = vol
             else:
                 # Multiple transfers - split evenly to avoid tiny remainders
-                import math
                 num_transfers = math.ceil(vol / MAX_PIPETTE_VOL)
                 transfer_vol = vol / num_transfers
 
@@ -571,27 +588,30 @@ def run(protocol: protocol_api.ProtocolContext):
                 # Blow out to ensure liquid leaves the tip
                 p50.blow_out(dest_well.top(-3))
 
+                # Touch tip to well wall to dislodge any clinging droplets
+                p50.touch_tip()
+
             dispense_count += 1
 
-        protocol.comment(f"  Dispensed to {dispense_count} wells")
+        protocol.comment(f"INFO: Dispensed to {dispense_count} wells")
 
         # Drop tip
         p50.drop_tip(home_after=False)
 
-    protocol.comment("Buffer preparation complete!")
+    protocol.comment("INFO: Buffer preparation complete!")
 
     # PHASE 2: 96 → 384 TRANSFER
 
     if not do_transfer:
         # Skip transfer phase if disabled
-        protocol.comment("SKIPPING 96→384 TRANSFER")
-        protocol.comment("PROTOCOL COMPLETE")
-        protocol.comment(f"   Prepared {len(all_well_data)} buffer conditions")
+        protocol.comment("NOTE: Skipping 96→384 transfer as per user setting.")
+        protocol.comment(f"INFO:   Prepared {len(all_well_data)} buffer conditions")
+        protocol.comment("--- PROTOCOL COMPLETE ---")
         return
 
-    protocol.comment("PHASE 2: 96-WELL → 384-WELL TRANSFER")
-    protocol.comment(f"  Transfer volume: {user_transfer_vol} µL")
-    protocol.comment(f"  Starting at 384 column: 1 (auto-fills entire plate)")
+    protocol.comment("--- PHASE 2: 96-WELL → 384-WELL TRANSFER ---")
+    protocol.comment(f"INFO: Transfer volume: {user_transfer_vol} µL")
+    protocol.comment(f"INFO: Starting at 384 column: 1 (auto-fills entire plate)")
 
     # Create interleaved well list for 384 plate
 
@@ -627,13 +647,13 @@ def run(protocol: protocol_api.ProtocolContext):
         # Determine which columns are used
         used_cols = sorted(set(int(w['well-index'][1:]) for w in plate_wells))
 
-        protocol.comment(f"  96-well Plate #{plate_idx + 1}: {len(used_cols)} columns")
+        protocol.comment(f"INFO: 96-well Plate #{plate_idx + 1}: {len(used_cols)} columns to transfer")
 
         # Transfer each column
         for col_idx, col in enumerate(used_cols):
             # Check if we've run out of space in 384 plate
             if transfer_idx >= len(wells_384_interleaved):
-                protocol.comment("  WARNING: Reached end of 384 plate!")
+                protocol.comment("WARNING: Reached end of 384-well plate. No more transfers possible.")
                 break
 
             # Source: top well of column in 96-plate (multichannel uses A row)
@@ -642,7 +662,7 @@ def run(protocol: protocol_api.ProtocolContext):
             # Destination: next well in interleaved 384 list
             dest_384 = wells_384_interleaved[transfer_idx]
 
-            protocol.comment(f"  Column {col_idx + 1}: {source_96} → {dest_384}")
+            protocol.comment(f"INFO: Transferring Column {col_idx + 1}: {source_96.parent.parent} C{col} → {dest_384.parent.parent} Well {dest_384.well_name}")
 
             # Pick up tips with multichannel
             m300.pick_up_tip()
@@ -657,6 +677,7 @@ def run(protocol: protocol_api.ProtocolContext):
             m300.flow_rate.dispense = MIX_FLOW_RATE
 
             # Mix
+            protocol.comment(f"  INFO: Mixing {MIX_REPETITIONS}x with {mix_volume}µL")
             m300.mix(MIX_REPETITIONS, mix_volume, source_96.bottom(1))
 
             # Normal flow rate for transfer
@@ -680,13 +701,13 @@ def run(protocol: protocol_api.ProtocolContext):
 
             transfer_idx += 1
 
-    protocol.comment("Transfer complete!")
+    protocol.comment("INFO: Transfer complete!")
 
     # PROTOCOL SUMMARY
 
-    protocol.comment("PROTOCOL COMPLETE!")
-    protocol.comment("Summary:")
-    protocol.comment(f"  • Buffer conditions: {num_conditions}")
+    protocol.comment("--- PROTOCOL COMPLETE ---")
+    protocol.comment("--- SUMMARY ---")
+    protocol.comment(f"  • Buffer conditions prepared: {num_conditions}")
     protocol.comment(f"  • 96-well plates used: {num_plates}")
     protocol.comment(f"  • Total wells prepared: {len(all_well_data)}")
     protocol.comment(f"  • Columns transferred to 384: {transfer_idx}")
