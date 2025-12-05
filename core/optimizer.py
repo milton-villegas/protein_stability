@@ -138,7 +138,10 @@ class BayesianOptimizer:
         
         for factor in self.categorical_factors:
             unique_vals = self.data[factor].unique().tolist()
-            self.factor_bounds[factor] = unique_vals
+            # Convert to strings for Ax (categorical parameters must be strings)
+            # Use float conversion to ensure consistent format (e.g., 6 -> "6.0")
+            unique_vals_str = [str(float(val)) for val in unique_vals]
+            self.factor_bounds[factor] = unique_vals_str
     
     def initialize_optimizer(self, minimize=False):
         """Initialize Ax client with parameters
@@ -1124,9 +1127,14 @@ class BayesianOptimizer:
             return None
     
     def _select_most_important_factors(self):
-        """Select the 2 most important numeric factors using feature importances"""
-        if len(self.numeric_factors) <= 2:
-            return self.numeric_factors[:2] if len(self.numeric_factors) == 2 else None
+        """Select the 2 most important factors using feature importances"""
+        # If we have exactly 2 numeric factors, use them
+        if len(self.numeric_factors) == 2:
+            return self.numeric_factors[:2]
+
+        # If we have < 2 numeric factors, use all factors (including categorical)
+        if len(self.numeric_factors) < 2:
+            return self.factor_columns[:2] if len(self.factor_columns) >= 2 else None
 
         try:
             # Use BoTorch's feature_importances method
@@ -1353,15 +1361,24 @@ class BayesianOptimizer:
                 if factor in self.numeric_factors:
                     template_params[sanitized_name] = float(self.data[factor].median())
                 else:
-                    template_params[sanitized_name] = str(self.data[factor].mode()[0])
+                    # Convert to string with float format for consistency (e.g., 8 -> "8.0")
+                    template_params[sanitized_name] = str(float(self.data[factor].mode()[0]))
 
             # Build list of parameterizations for batch prediction
             parameterizations = []
             for i in range(X.shape[0]):
                 for j in range(X.shape[1]):
                     params = template_params.copy()
-                    params[factor_x_sanitized] = float(X[i, j])
-                    params[factor_y_sanitized] = float(Y[i, j])
+                    # Convert to string for categorical, float for numeric
+                    if is_x_categorical:
+                        params[factor_x_sanitized] = str(float(X[i, j]))  # Convert integer to float string (6 -> "6.0")
+                    else:
+                        params[factor_x_sanitized] = float(X[i, j])
+
+                    if is_y_categorical:
+                        params[factor_y_sanitized] = str(float(Y[i, j]))  # Convert integer to float string
+                    else:
+                        params[factor_y_sanitized] = float(Y[i, j])
                     parameterizations.append(params)
 
             print(f"ℹ️  Predicting {len(parameterizations)} points using BO model...")
@@ -1639,7 +1656,8 @@ class BayesianOptimizer:
                 if factor in self.numeric_factors:
                     template_params[sanitized_name] = float(self.data[factor].median())
                 else:
-                    template_params[sanitized_name] = str(self.data[factor].mode()[0])
+                    # Convert to string with float format for consistency (e.g., 8 -> "8.0")
+                    template_params[sanitized_name] = str(float(self.data[factor].mode()[0]))
 
             # Build parameterizations
             parameterizations = []

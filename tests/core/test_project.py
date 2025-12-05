@@ -399,9 +399,8 @@ class TestDoEProjectPersistence:
         project = DoEProject()
         project.name = "Saved Project"
 
-        save_path = tmp_path / "test.pkl"
-        with open(save_path, 'wb') as f:
-            pickle.dump(project, f)
+        save_path = tmp_path / "test.json"
+        project.save(str(save_path))
 
         # Load using classmethod
         loaded = DoEProject.load(str(save_path))
