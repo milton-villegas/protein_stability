@@ -182,7 +182,7 @@ class DoEDesigner:
         volume_headers = []
         if "buffer pH" in factors:
             for ph in buffer_ph_values:
-                volume_headers.append(f"buffer {ph}")
+                volume_headers.append(f"buffer_{ph}")
 
         for factor in factor_names:
             if factor not in ["buffer pH", "buffer_concentration"]:
@@ -199,9 +199,8 @@ class DoEDesigner:
         for idx, combo in enumerate(combinations):
             row_dict = {factor_names[i]: combo[i] for i in range(len(factor_names))}
 
-            # Generate well positions using WellMapper
-            plate_num, well_pos = self.well_mapper.generate_well_position(idx)
-            well_384 = self.well_mapper.convert_96_to_384_well(plate_num, well_pos)
+            # Generate well positions using WellMapper (384-well reading order)
+            plate_num, well_pos, well_384 = self.well_mapper.generate_well_position_384_order(idx)
 
             # Excel row
             excel_row = [idx + 1, plate_num, well_pos, well_384]

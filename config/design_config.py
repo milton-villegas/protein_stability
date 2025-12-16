@@ -3,7 +3,18 @@ Design Configuration Constants
 Centralized configuration for experiment designer
 """
 
+import os
 from typing import Dict, List, Tuple, Any
+
+# ============================================================================
+# DEBUG CONFIGURATION
+# ============================================================================
+
+DEBUG = os.getenv('DEBUG', '0') == '1'
+"""
+Global debug flag. Enable with: DEBUG=1 python3 main.py
+When enabled, shows detailed debug output for troubleshooting.
+"""
 
 # ============================================================================
 # WELL PLATE CONFIGURATION

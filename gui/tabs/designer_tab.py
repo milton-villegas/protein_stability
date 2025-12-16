@@ -1257,48 +1257,23 @@ class DesignerTab(ttk.Frame):
             self.plates_var.set("?")
     
     def _generate_well_position(self, idx: int) -> Tuple[int, str]:
-        """Generate 96-well plate and well position from index (column-major order)"""
+        """Generate 96-well plate and well position from index (row-major order)"""
         plate_num = (idx // 96) + 1
         well_idx = idx % 96
 
-        # Column-major order: A1, B1, C1...H1, A2, B2...H12
-        row = chr(ord('A') + (well_idx % 8))   # 0-7 for A-H
-        col = (well_idx // 8) + 1              # 0-11 for 1-12
+        # Row-major order: A1, A2, A3...A12, B1, B2...B12
+        row = chr(ord('A') + (well_idx // 12))  # 0-7 for A-H
+        col = (well_idx % 12) + 1               # 1-12
         well_pos = f"{row}{col}"
 
         return plate_num, well_pos
     
     def _convert_96_to_384_well(self, plate_num: int, well_96: str) -> str:
-        """Convert 96-well to 384-well position
-        
-        Mapping rules:
-        - Plate 1→ cols 1-6, Plate 2→ cols 7-12, etc.
-        - Odd cols (1,3,5) use first row of pair (A→A, B→C, C→E)
-        - Even cols (2,4,6) use second row (A→B, B→D, C→F)
-        """
-        import math
-        
-        # Parse 96-well position (e.g., "B3" → row=B, col=3)
-        row_96 = well_96[0]  # Letter (A-H)
-        col_96 = int(well_96[1:])  # Number (1-12)
-        
-        # Convert row letter to index (A=0, B=1, ..., H=7)
-        row_96_index = ord(row_96) - ord('A')
-        
-        # Map to 384-well column: (plate-1)*6 + ceil(col/2)
-        col_384 = (plate_num - 1) * 6 + math.ceil(col_96 / 2)
-        
-        # Map 96-well row to 384-well row based on column parity
-        # Each 96 row → 2 consecutive 384 rows (odd col→first, even col→second)
-        if col_96 % 2 == 1:  # Odd column
-            row_384_index = row_96_index * 2
-        else:  # Even column
-            row_384_index = row_96_index * 2 + 1
-        
-        # Convert back to letter (A=0, B=1, ..., P=15)
-        row_384 = chr(ord('A') + row_384_index)
-        
-        return f"{row_384}{col_384}"
+        """Convert 96-well to 384-well position using WellMapper"""
+        from core.well_mapper import WellMapper
+
+        # Use WellMapper to convert 96-well to 384-well position
+        return WellMapper.convert_96_to_384_well(plate_num, well_96)
     
     def _filter_categorical_combinations(self, combinations: List[Tuple], factor_names: List[str]) -> List[Tuple]:
         """Filter out illogical categorical-concentration pairings

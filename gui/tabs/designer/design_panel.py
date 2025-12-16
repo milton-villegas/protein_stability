@@ -55,6 +55,9 @@ class DesignPanelMixin:
     def _generate_well_position(self, idx: int) -> Tuple[int, str]:
         """Generate 96-well plate and well position from index.
 
+        Fills plates sequentially: samples 1-96 on Plate 1, 97-192 on Plate 2, etc.
+        Within each plate, arranges wells so that 384-well positions are in reading order.
+
         Args:
             idx: Zero-based index of the well
 
@@ -62,13 +65,24 @@ class DesignPanelMixin:
             Tuple of (plate_number, well_position) where plate_number is 1-based
             and well_position is in format like 'A1', 'B12', etc.
         """
-        plate_num = (idx // 96) + 1
-        well_idx = idx % 96
+        from core.well_mapper import WellMapper
 
-        # Column-major order: A1, B1, C1...H1, A2, B2...H12
-        row = chr(ord('A') + (well_idx % 8))   # 0-7 for A-H
-        col = (well_idx // 8) + 1              # 0-11 for 1-12
-        well_pos = f"{row}{col}"
+        # Determine which plate (1-4)
+        plate_num = (idx // 96) + 1
+        pos_in_batch = idx % 96
+
+        # Calculate 384-well position for this sample (COLUMN-MAJOR order: A1, B1, C1...P1, A2, B2...)
+        # Each plate occupies 6 columns in the 384-well plate
+        # Plate 1 → columns 1-6, Plate 2 → columns 7-12, etc.
+        row_384 = pos_in_batch % 16  # 0-15 (A-P) - fill down columns first
+        col_within_plate = pos_in_batch // 16  # 0-5 (which of the 6 columns for this plate)
+        col_384 = (plate_num - 1) * 6 + col_within_plate + 1  # 1-24
+
+        # Convert to 384-well index (0-383)
+        well_384_index = row_384 * 24 + (col_384 - 1)
+
+        # Reverse map from 384-well to 96-well position
+        _, well_pos = WellMapper.reverse_map_384_to_96(well_384_index)
 
         return plate_num, well_pos
 
