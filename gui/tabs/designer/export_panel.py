@@ -55,6 +55,129 @@ class ExportPanelMixin:
         self._update_display()
     """
 
+    def _create_reagent_setup_guide(self, workbook, volume_headers: List[str],
+                                    volume_rows: List[List], stock_concs: Dict[str, float],
+                                    per_level_concs: Dict) -> None:
+        """
+        Create a reagent setup guide sheet showing where to place each reagent in the reservoir.
+
+        Args:
+            workbook: openpyxl Workbook object
+            volume_headers: List of reagent column names from CSV
+            volume_rows: List of volume data rows
+            stock_concs: Dict of stock concentrations for numeric factors
+            per_level_concs: Dict of per-level concentrations for categorical factors
+        """
+        guide_sheet = workbook.create_sheet(title="Reagent Setup Guide")
+
+        # Cytiva 24 reservoir positions (column-wise: A1, B1, C1, D1, A2, B2...)
+        reservoir_positions = []
+        for col in range(1, 7):  # 6 columns
+            for row in ['A', 'B', 'C', 'D']:  # 4 rows
+                reservoir_positions.append(f"{row}{col}")
+
+        # Headers - simple style matching other sheets
+        headers = ["Position", "Reagent", "Stock Concentration", "Volume Needed", "Add to Reservoir (with 20% overage)"]
+        for col_idx, header in enumerate(headers, start=1):
+            cell = guide_sheet.cell(row=1, column=col_idx, value=header)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
+            cell.fill = PatternFill(start_color="2196F3", end_color="2196F3", fill_type="solid")
+
+        # Calculate total volumes for each reagent
+        row_idx = 2
+        position_idx = 0  # Separate counter for reservoir positions
+
+        for reagent_idx, reagent_name in enumerate(volume_headers):
+            # Skip ID column if present
+            if reagent_name.upper() == "ID":
+                continue
+
+            # Calculate total volume needed (sum across all samples)
+            total_volume = 0.0
+            for vol_row in volume_rows:
+                try:
+                    total_volume += float(vol_row[reagent_idx])
+                except (ValueError, TypeError, IndexError):
+                    pass
+
+            # Add 20% overage
+            volume_with_overage = round(total_volume * 1.20, 1)
+
+            # Determine stock concentration display
+            stock_display = "N/A"
+
+            # Check if it's a buffer pH column (buffer_7.5, buffer_8.5, etc.)
+            if reagent_name.startswith("buffer_"):
+                # Get buffer concentration stock
+                if "buffer_concentration" in stock_concs:
+                    stock_display = f"{stock_concs['buffer_concentration']} mM"
+
+            # Check if it's a categorical factor with per-level concentrations
+            elif per_level_concs:
+                # Detergents (c12e8, lmng, ddm, etc.)
+                if "detergent" in per_level_concs:
+                    for level, conc_data in per_level_concs["detergent"].items():
+                        # Normalize level name for comparison
+                        level_normalized = level.lower().replace(' ', '_').replace('-', '_')
+                        reagent_normalized = reagent_name.lower().replace(' ', '_').replace('-', '_')
+                        if level_normalized == reagent_normalized:
+                            stock_display = f"{conc_data.get('stock', 'N/A')}%"
+                            break
+
+                # Reducing agents (dtt, tcep, etc.)
+                if "reducing_agent" in per_level_concs:
+                    for level, conc_data in per_level_concs["reducing_agent"].items():
+                        level_normalized = level.lower().replace(' ', '_').replace('-', '_')
+                        reagent_normalized = reagent_name.lower().replace(' ', '_').replace('-', '_')
+                        if level_normalized == reagent_normalized:
+                            stock_display = f"{conc_data.get('stock', 'N/A')} mM"
+                            break
+
+            # Check if it's a regular numeric factor
+            if stock_display == "N/A" and reagent_name in stock_concs:
+                stock_val = stock_concs[reagent_name]
+                # Try to determine unit from AVAILABLE_FACTORS
+                display_name = AVAILABLE_FACTORS.get(reagent_name, reagent_name)
+                unit = ""
+                if "(" in display_name and ")" in display_name:
+                    start = display_name.rfind("(") + 1
+                    end = display_name.rfind(")")
+                    unit = display_name[start:end]
+                stock_display = f"{stock_val} {unit}".strip()
+
+            # Get reagent display name (capitalize first letter, replace underscores)
+            reagent_display = reagent_name.replace('_', ' ').title()
+            if reagent_name.startswith("buffer_"):
+                ph_value = reagent_name.replace("buffer_", "")
+                reagent_display = f"Buffer pH {ph_value}"
+
+            # Get reservoir position using separate position counter
+            position = reservoir_positions[position_idx] if position_idx < len(reservoir_positions) else f"Extra-{position_idx}"
+
+            # Write row
+            guide_sheet.cell(row=row_idx, column=1, value=position)
+            guide_sheet.cell(row=row_idx, column=2, value=reagent_display)
+            guide_sheet.cell(row=row_idx, column=3, value=stock_display)
+            guide_sheet.cell(row=row_idx, column=4, value=f"{total_volume:.1f} µL")
+            guide_sheet.cell(row=row_idx, column=5, value=f"{volume_with_overage:.1f} µL")
+
+            row_idx += 1
+            position_idx += 1  # Increment position counter only for actual reagents
+
+        # Auto-adjust column widths
+        for col in guide_sheet.columns:
+            max_length = 0
+            col_letter = col[0].column_letter
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 40)
+            guide_sheet.column_dimensions[col_letter].width = adjusted_width
+
     def _extract_unique_categorical_values(self, factors: Dict[str, List[str]],
                                            factor_name: str,
                                            skip_none: bool = False) -> List[str]:
@@ -756,6 +879,9 @@ class ExportPanelMixin:
             # Add Warning sheet if there are volume conflicts
             if has_conflicts:
                 self._add_warning_sheet(wb, negative_water_wells, excel_rows, volume_headers, volume_rows)
+
+            # Add Reagent Setup Guide sheet
+            self._create_reagent_setup_guide(wb, volume_headers, volume_rows, stock_concs, per_level_concs)
 
             wb.save(xlsx_path)
 

@@ -10,6 +10,7 @@ import seaborn as sns
 from scipy import stats as scipy_stats
 import os
 from datetime import datetime
+from config.design_config import DEBUG
 
 # Check if Ax is available
 try:
@@ -18,9 +19,6 @@ try:
     AX_AVAILABLE = True
 except ImportError:
     AX_AVAILABLE = False
-
-# Debug flag for Pareto frontier calculations
-DEBUG = True
 
 
 class BayesianOptimizer:
@@ -32,9 +30,6 @@ class BayesianOptimizer:
         'accent': '#CC78BC',       # Reddish Purple
         'warning': '#D55E00',      # Vermillion
     }
-
-    # Debug flag - set to True to see detailed console output
-    DEBUG = True
 
     def __init__(self):
         self.ax_client = None
@@ -89,10 +84,10 @@ class BayesianOptimizer:
 
         # Store optimization directions
         self.response_directions = response_directions or {}
-        if self.DEBUG:
-            print("\n" + "="*70)
-            print("OPTIMIZER DATA SETUP")
-            print("="*70)
+        if DEBUG:
+            print("\n" + "="*80)
+            print("[DEBUG OPTIMIZER] Data setup")
+            print("="*80)
             print(f"[DEBUG OPTIMIZER] Response columns: {self.response_columns}")
             print(f"[DEBUG OPTIMIZER] Response directions (input): {response_directions}")
 
@@ -100,25 +95,25 @@ class BayesianOptimizer:
         for resp in self.response_columns:
             if resp not in self.response_directions:
                 self.response_directions[resp] = 'maximize'
-                if self.DEBUG:
+                if DEBUG:
                     print(f"  '{resp}' direction not specified, defaulting to 'maximize'")
 
-        if self.DEBUG:
+        if DEBUG:
             print(f"[DEBUG OPTIMIZER] Response directions (final): {self.response_directions}")
 
         # Store response constraints
         self.response_constraints = response_constraints or {}
-        if self.DEBUG:
+        if DEBUG:
             print(f"[DEBUG OPTIMIZER] Response constraints: {self.response_constraints}")
 
         # Store exploration mode
         self.exploration_mode = exploration_mode
-        if self.DEBUG:
+        if DEBUG:
             print(f"[DEBUG OPTIMIZER] Exploration mode: {self.exploration_mode}")
 
         # Multi-objective if more than one response
         self.is_multi_objective = len(self.response_columns) > 1
-        if self.DEBUG:
+        if DEBUG:
             print(f"[DEBUG OPTIMIZER] Multi-objective: {self.is_multi_objective}")
 
         # Create name mappings
@@ -139,8 +134,19 @@ class BayesianOptimizer:
         for factor in self.categorical_factors:
             unique_vals = self.data[factor].unique().tolist()
             # Convert to strings for Ax (categorical parameters must be strings)
-            # Use float conversion to ensure consistent format (e.g., 6 -> "6.0")
-            unique_vals_str = [str(float(val)) for val in unique_vals]
+            # For numeric categoricals (like pH), use float conversion for consistent format
+            # For string categoricals (like detergent names), keep as-is
+            unique_vals_str = []
+            for val in unique_vals:
+                # Skip NaN values
+                if pd.isna(val):
+                    continue
+                try:
+                    # Try to convert to float for numeric categoricals (e.g., pH: 6.5 -> "6.5")
+                    unique_vals_str.append(str(float(val)))
+                except (ValueError, TypeError):
+                    # If conversion fails, it's a string categorical (e.g., "C12E8")
+                    unique_vals_str.append(str(val))
             self.factor_bounds[factor] = unique_vals_str
     
     def initialize_optimizer(self, minimize=False):
@@ -176,14 +182,28 @@ class BayesianOptimizer:
                         "value_type": "float"
                     })
                 else:
-                    # Normal continuous numeric factors
+                    # Check if factor has constant value (min == max)
                     min_val, max_val = self.factor_bounds[factor]
-                    parameters.append({
-                        "name": sanitized_name,
-                        "type": "range",
-                        "bounds": [min_val, max_val],
-                        "value_type": "float"
-                    })
+                    if abs(max_val - min_val) < 1e-9:  # Essentially equal
+                        print(f"ℹ️  '{factor}' has constant value ({min_val}) - treating as ordered categorical")
+                        print(f"   BO will always suggest this value (only tested value)")
+                        # Treat as ordered categorical with single value (like pH)
+                        # This allows it to adapt if more values are added later
+                        parameters.append({
+                            "name": sanitized_name,
+                            "type": "choice",
+                            "values": [min_val],  # Single value, but still a choice parameter
+                            "is_ordered": True,
+                            "value_type": "float"
+                        })
+                    else:
+                        # Normal continuous numeric factors with varying values
+                        parameters.append({
+                            "name": sanitized_name,
+                            "type": "range",
+                            "bounds": [min_val, max_val],
+                            "value_type": "float"
+                        })
             elif factor in self.categorical_factors:
                 parameters.append({
                     "name": sanitized_name,
@@ -196,17 +216,17 @@ class BayesianOptimizer:
         objectives = {}
         if self.is_multi_objective:
             # Multi-objective optimization
-            if self.DEBUG:
-                print("\n" + "="*70)
+            if DEBUG:
+                print("\n" + "="*80)
                 print("BAYESIAN OPTIMIZATION INITIALIZATION")
-                print("="*70)
+                print("="*80)
                 print(f"[DEBUG INIT] Multi-objective optimization")
                 print(f"[DEBUG INIT] Optimizing {len(self.response_columns)} objectives:")
             for response in self.response_columns:
                 direction = self.response_directions[response]
                 minimize_this = (direction == 'minimize')
                 objectives[response] = ObjectiveProperties(minimize=minimize_this)
-                if self.DEBUG:
+                if DEBUG:
                     arrow = '↓' if minimize_this else '↑'
                     print(f"  {arrow} {response}: {direction} (Ax minimize={minimize_this})")
         else:
@@ -214,10 +234,10 @@ class BayesianOptimizer:
             direction = self.response_directions.get(self.response_column, 'maximize')
             minimize = (direction == 'minimize')
             objectives[self.response_column] = ObjectiveProperties(minimize=minimize)
-            if self.DEBUG:
-                print("\n" + "="*70)
+            if DEBUG:
+                print("\n" + "="*80)
                 print("BAYESIAN OPTIMIZATION INITIALIZATION")
-                print("="*70)
+                print("="*80)
                 print(f"[DEBUG INIT] Single-objective optimization")
                 arrow = '↓' if minimize else '↑'
                 print(f"  {arrow} {self.response_column}: {direction} (Ax minimize={minimize})")
@@ -227,53 +247,53 @@ class BayesianOptimizer:
         outcome_constraints = []
         objective_constraints = {}  # Store constraints on objectives for post-filtering
 
-        if self.DEBUG:
+        if DEBUG:
             print(f"\n[DEBUG INIT] Building outcome constraints...")
             print(f"  Response constraints: {self.response_constraints}")
             print(f"  Exploration mode: {self.exploration_mode}")
             print(f"  Objectives: {self.response_columns}")
 
         if self.response_constraints and not self.exploration_mode:
-            if self.DEBUG:
+            if DEBUG:
                 print(f"[DEBUG INIT] Processing response constraints:")
             for response, constraint in self.response_constraints.items():
-                if self.DEBUG:
+                if DEBUG:
                     print(f"  Constraint for '{response}': {constraint}")
 
                 # Check if this constraint is on an objective metric
                 if response in self.response_columns:
-                    if self.DEBUG:
+                    if DEBUG:
                         print(f"    ⚠️  '{response}' is an OBJECTIVE - Ax won't accept constraint")
                         print(f"    → Will post-filter BO suggestions instead")
                     objective_constraints[response] = constraint
                 else:
                     # This is a constraint on a non-objective metric - Ax can handle it
-                    if self.DEBUG:
+                    if DEBUG:
                         print(f"    ✓ '{response}' is NOT an objective - can add to Ax")
                     try:
                         if 'min' in constraint:
                             min_val = constraint['min']
                             constraint_str = f"{response} >= {min_val}"
                             outcome_constraints.append(constraint_str)
-                            if self.DEBUG:
+                            if DEBUG:
                                 print(f"      ✓ Added: {constraint_str}")
                         if 'max' in constraint:
                             max_val = constraint['max']
                             constraint_str = f"{response} <= {max_val}"
                             outcome_constraints.append(constraint_str)
-                            if self.DEBUG:
+                            if DEBUG:
                                 print(f"      ✓ Added: {constraint_str}")
                     except Exception as e:
-                        if self.DEBUG:
+                        if DEBUG:
                             print(f"      ❌ ERROR: {e}")
                             import traceback
                             traceback.print_exc()
 
-            if self.DEBUG:
+            if DEBUG:
                 print(f"[DEBUG INIT] Constraints to Ax: {len(outcome_constraints)}")
                 print(f"[DEBUG INIT] Constraints for post-filtering: {len(objective_constraints)}")
         elif self.response_constraints and self.exploration_mode:
-            if self.DEBUG:
+            if DEBUG:
                 print(f"[DEBUG INIT] Exploration mode enabled - constraints tracked but NOT enforced:")
                 for response, constraint in self.response_constraints.items():
                     parts = []
@@ -284,14 +304,14 @@ class BayesianOptimizer:
                     if parts:
                         print(f"  {' and '.join(parts)} (guidance only)")
         else:
-            if self.DEBUG:
+            if DEBUG:
                 print(f"[DEBUG INIT] No constraints to apply")
 
         # Store objective constraints for post-filtering in get_next_suggestions
         self.objective_constraints = objective_constraints
 
         # Create Ax client
-        if self.DEBUG:
+        if DEBUG:
             print(f"\n[DEBUG INIT] Creating Ax experiment...")
             print(f"  Parameters: {len(parameters)} defined")
             print(f"  Objectives: {list(objectives.keys())}")
@@ -306,17 +326,17 @@ class BayesianOptimizer:
                 outcome_constraints=outcome_constraints if outcome_constraints else None,
                 choose_generation_strategy_kwargs={"num_initialization_trials": 0}
             )
-            if self.DEBUG:
+            if DEBUG:
                 print(f"[DEBUG INIT] ✓ Ax experiment created successfully")
         except Exception as e:
-            if self.DEBUG:
+            if DEBUG:
                 print(f"[DEBUG INIT] ❌ ERROR creating Ax experiment: {e}")
                 import traceback
                 traceback.print_exc()
             raise
 
         # Add existing data as completed trials using sanitized names
-        if self.DEBUG:
+        if DEBUG:
             print(f"\n[DEBUG INIT] Adding {len(self.data)} existing trials to Ax...")
             print(f"  Available columns: {list(self.data.columns)}")
             print(f"  Looking for ID column...")
@@ -351,7 +371,7 @@ class BayesianOptimizer:
             # If no ID column found, use the pandas index + 1 (convert to 1-based)
             if exp_id is None:
                 exp_id = idx + 1  # Convert 0-based index to 1-based ID
-                if self.DEBUG and idx == 0:
+                if DEBUG and idx == 0:
                     print(f"  ⚠️  No ID column found, using pandas index + 1 as ID (1-based)")
 
             # Convert ID to Python int (handles numpy types from DataFrame)
@@ -365,7 +385,7 @@ class BayesianOptimizer:
             }
             self.trial_metadata[trial_index] = metadata
 
-            if self.DEBUG and idx < 3:  # Show first 3 for debugging
+            if DEBUG and idx < 3:  # Show first 3 for debugging
                 if id_col_found:
                     print(f"  Trial {trial_index}: ID={exp_id} (from column '{id_col_found}'), pandas_row={idx}")
                 else:
@@ -383,7 +403,7 @@ class BayesianOptimizer:
             )
 
         self.is_initialized = True
-        if self.DEBUG:
+        if DEBUG:
             print(f"[DEBUG INIT] ✓ Initialized BO with {len(self.data)} trials")
             print(f"  Stored metadata for {len(self.trial_metadata)} trials")
 
@@ -438,10 +458,10 @@ class BayesianOptimizer:
         all_suggestions = []
         filtered_suggestions = []
 
-        if self.DEBUG:
-            print("\n" + "="*70)
+        if DEBUG:
+            print("\n" + "="*80)
             print("BAYESIAN OPTIMIZATION SUGGESTIONS")
-            print("="*70)
+            print("="*80)
             print(f"[DEBUG SUGGESTIONS] Generating {n} suggestions")
             if has_objective_constraints:
                 print(f"  Objective constraints (informational):")
@@ -482,7 +502,7 @@ class BayesianOptimizer:
                         # Get (mean, sem) tuple and extract mean
                         predicted_values[metric_name] = model_prediction[0][metric_name][trial_index][0]
 
-            if self.DEBUG and i < 2:  # Debug first 2
+            if DEBUG and i < 2:  # Debug first 2
                 print(f"  Trial {trial_index}: predicted {predicted_values}")
 
             # Abandon trial so we can generate more suggestions
@@ -537,7 +557,7 @@ class BayesianOptimizer:
                     if len(filtered_suggestions) >= n:
                         break  # Got enough valid suggestions
                 else:
-                    if self.DEBUG and i < 3:  # Show first few rejections
+                    if DEBUG and i < 3:  # Show first few rejections
                         print(f"  ⚠️  Suggestion {i+1} rejected: {', '.join(violations)}")
             else:
                 # No objective constraints, accept all suggestions
@@ -547,7 +567,7 @@ class BayesianOptimizer:
 
         result = filtered_suggestions if need_filtering else all_suggestions
 
-        if self.DEBUG:
+        if DEBUG:
             if need_filtering:
                 print(f"\n[DEBUG SUGGESTIONS] ✓ Generated {max_attempts} candidates, {len(result)} met constraints")
                 if len(result) < n:
@@ -570,13 +590,13 @@ class BayesianOptimizer:
             return None  # No Pareto frontier for single-objective
 
         try:
-            if self.DEBUG:
-                print("\n" + "="*70)
+            if DEBUG:
+                print("\n" + "="*80)
                 print("PARETO FRONTIER EXTRACTION")
-                print("="*70)
+                print("="*80)
             # Get Pareto frontier from Ax
             pareto_frontier = self.ax_client.get_pareto_optimal_parameters()
-            if self.DEBUG:
+            if DEBUG:
                 print(f"[DEBUG PARETO] Ax returned {len(pareto_frontier)} Pareto-optimal trials")
 
             # Convert to more usable format
@@ -597,7 +617,7 @@ class BayesianOptimizer:
 
                 # If metadata not found, fall back to converting sanitized names
                 if not original_params:
-                    if self.DEBUG:
+                    if DEBUG:
                         print(f"  ⚠️  Pareto point {i}: No metadata found for trial {trial_index}, using fallback")
                     original_params = {}
                     for sanitized_name, value in params.items():
@@ -610,7 +630,7 @@ class BayesianOptimizer:
 
                 exp_id = metadata.get('id')
                 row_index = metadata.get('row_index')
-                if self.DEBUG and i <= 3:  # Show first 3 for debugging
+                if DEBUG and i <= 3:  # Show first 3 for debugging
                     print(f"\n  Pareto point {i}:")
                     print(f"    Trial index (Ax): {trial_index}")
                     print(f"    Row index (pandas): {row_index}")
@@ -629,12 +649,12 @@ class BayesianOptimizer:
                     'row_index': metadata.get('row_index')
                 })
 
-            if self.DEBUG:
+            if DEBUG:
                 print(f"\n[DEBUG PARETO] ✓ Extracted {len(pareto_points)} Pareto points with metadata")
             return pareto_points
 
         except Exception as e:
-            if self.DEBUG:
+            if DEBUG:
                 print(f"\n[DEBUG PARETO] ⚠️  Could not extract Pareto frontier: {str(e)}")
                 import traceback
                 traceback.print_exc()
@@ -853,9 +873,9 @@ class BayesianOptimizer:
         # Get min/max for each objective from ALL data
         normalized_data = {}
         if DEBUG:
-            print("\n" + "="*70)
-            print("PARALLEL COORDINATES NORMALIZATION DEBUG")
-            print("="*70)
+            print("\n" + "="*80)
+            print("[DEBUG PLOT] Parallel coordinates normalization")
+            print("="*80)
 
         for resp in self.response_columns:
             data_min = self.data[resp].min()
@@ -1361,8 +1381,14 @@ class BayesianOptimizer:
                 if factor in self.numeric_factors:
                     template_params[sanitized_name] = float(self.data[factor].median())
                 else:
-                    # Convert to string with float format for consistency (e.g., 8 -> "8.0")
-                    template_params[sanitized_name] = str(float(self.data[factor].mode()[0]))
+                    # Categorical factor - use mode (most common value)
+                    mode_val = self.data[factor].mode()[0]
+                    try:
+                        # For numeric categoricals (like pH), convert to float string
+                        template_params[sanitized_name] = str(float(mode_val))
+                    except (ValueError, TypeError):
+                        # For string categoricals (like detergent names), keep as string
+                        template_params[sanitized_name] = str(mode_val)
 
             # Build list of parameterizations for batch prediction
             parameterizations = []
@@ -1918,7 +1944,7 @@ class BayesianOptimizer:
     
     def export_bo_batch_to_files(self, n_suggestions, batch_number, excel_path,
                                  stock_concs, final_volume, buffer_ph_values,
-                                 per_level_concs=None):
+                                 per_level_concs=None, protein_stock=None, protein_final=None):
         """Export BO suggestions to Excel and Opentrons CSV
 
         Args:
@@ -1929,6 +1955,8 @@ class BayesianOptimizer:
             final_volume: Final volume in µL
             buffer_ph_values: List of buffer pH values used
             per_level_concs: Optional dict of per-level concentrations {factor: {level: {stock, final}}}
+            protein_stock: Optional protein stock concentration (mg/mL)
+            protein_final: Optional protein final concentration (mg/mL)
 
         Returns:
             Tuple of (xlsx_path, csv_path) or None if failed
@@ -1984,11 +2012,12 @@ class BayesianOptimizer:
             last_id = ws.cell(row=last_row_with_data, column=1).value
             next_id = int(last_id) + 1 if last_id else 1
             
-            print(f"\nExcel structure:")
-            print(f"  Headers: {headers}")
-            print(f"  Excel max_row: {ws.max_row}")
-            print(f"  Actual last row with data: {last_row_with_data}")
-            print(f"  Last ID: {last_id}, Next ID: {next_id}")
+            if DEBUG:
+                print(f"\nExcel structure:")
+                print(f"  Headers: {headers}")
+                print(f"  Excel max_row: {ws.max_row}")
+                print(f"  Actual last row with data: {last_row_with_data}")
+                print(f"  Last ID: {last_id}, Next ID: {next_id}")
             
             # Prepare new rows for Excel
             new_excel_rows = []
@@ -2015,51 +2044,96 @@ class BayesianOptimizer:
                 if internal_name:
                     factor_col_indices[internal_name] = idx
                     display_to_internal[header] = internal_name
-            
-            print(f"\nColumn mapping:")
-            print(f"  Factor columns: {factor_col_indices}")
-            print(f"  Response column index: {response_col_idx}")
-            print(f"  Display to internal: {display_to_internal}")
-            
+
+            if DEBUG:
+                print(f"\n[DEBUG EXPORT] Column mapping:")
+                print(f"  Factor columns found in Excel: {factor_col_indices}")
+                print(f"  Response column index: {response_col_idx}")
+                print(f"  Display to internal mapping: {display_to_internal}")
+                print(f"\n[DEBUG EXPORT] All Excel headers: {headers}")
+
             # Generate well positions (restart from A1 for new Opentrons run)
             
-            # Collect unique values for categorical factors from all suggestions BEFORE processing
+            # Collect unique values for categorical factors from:
+            # 1. BO suggestions (for this batch)
+            # 2. Original Excel data (to maintain consistent CSV columns across batches)
+            # IMPORTANT: Skip "None" values as they don't need columns in CSV (no volume to pipette)
             detergent_values = set()
             reducing_agent_values = set()
-            
+
+            # Define "none" values to skip (matching factorial design logic)
+            none_values = ('none', '0', '', 'nan')
+
+            # First, get values from BO suggestions
             for sug in suggestions:
                 # Check for detergent (try multiple possible keys)
                 for det_key in ['detergent', 'Detergent']:
                     if det_key in sug:
                         det_val = str(sug[det_key]).strip()
-                        if det_val:
+                        # Skip "None" values (they don't need columns in CSV)
+                        if det_val and det_val.lower() not in none_values:
                             detergent_values.add(det_val)
                         break
-                
+
                 # Check for reducing agent (try multiple possible keys)
                 for agent_key in ['reducing_agent', 'Reducing Agent']:
                     if agent_key in sug:
                         agent_val = str(sug[agent_key]).strip()
-                        if agent_val:
+                        # Skip "None" values (they don't need columns in CSV)
+                        if agent_val and agent_val.lower() not in none_values:
                             reducing_agent_values.add(agent_val)
                         break
-            
-            print(f"Detected categorical values:")
-            print(f"  Detergents: {detergent_values}")
-            print(f"  Reducing Agents: {reducing_agent_values}")
+
+            # Also add values from original Excel data to ensure ALL possible values are in CSV
+            # This maintains consistent column order across factorial design and BO exports
+            if 'Detergent' in headers:
+                det_col_idx = headers.index('Detergent')
+                for row_num in range(2, last_row_with_data + 1):
+                    det_val = ws.cell(row=row_num, column=det_col_idx + 1).value
+                    if det_val:
+                        det_val_str = str(det_val).strip()
+                        # Skip "None" values (they don't need columns in CSV)
+                        if det_val_str and det_val_str.lower() not in none_values:
+                            detergent_values.add(det_val_str)
+
+            if 'Reducing Agent' in headers:
+                agent_col_idx = headers.index('Reducing Agent')
+                for row_num in range(2, last_row_with_data + 1):
+                    agent_val = ws.cell(row=row_num, column=agent_col_idx + 1).value
+                    if agent_val:
+                        agent_val_str = str(agent_val).strip()
+                        # Skip "None" values (they don't need columns in CSV)
+                        if agent_val_str and agent_val_str.lower() not in none_values:
+                            reducing_agent_values.add(agent_val_str)
+
+            if DEBUG:
+                print(f"Detected categorical values (BO + original data):")
+                print(f"  Detergents: {detergent_values}")
+                print(f"  Reducing Agents: {reducing_agent_values}")
             
             for idx, suggestion in enumerate(suggestions):
-                # Well position calculation
+                # Well position calculation using WellMapper
+                # This ensures 384-well positions are in column-major order (A1, B1, C1...P1, A2, B2...)
+                from core.well_mapper import WellMapper
+
+                # Determine which plate (1-4)
                 plate_num = (idx // 96) + 1
-                well_idx = idx % 96
-                # Column-major order: A1, B1, C1...H1, A2, B2...H12
-                row_letter = chr(65 + (well_idx % 8))  # 0-7 for A-H
-                col_number = (well_idx // 8) + 1       # 0-11 for 1-12
-                well_pos = f"{row_letter}{col_number}"
-                
-                # 384-well conversion
-                row_384 = chr(65 + (well_idx // 12) * 2 + (plate_num - 1) % 2)
-                col_384 = (well_idx % 12) * 2 + 1 + (plate_num - 1) // 2
+                pos_in_batch = idx % 96
+
+                # Calculate 384-well position for this sample (COLUMN-MAJOR order: A1, B1, C1...P1, A2, B2...)
+                # Each plate occupies 6 columns in the 384-well plate
+                row_384_idx = pos_in_batch % 16  # 0-15 (A-P) - fill down columns first
+                col_within_plate = pos_in_batch // 16  # 0-5 (which of the 6 columns for this plate)
+                col_384 = (plate_num - 1) * 6 + col_within_plate + 1  # 1-24
+
+                # Convert to 384-well index (0-383)
+                well_384_index = row_384_idx * 24 + (col_384 - 1)
+
+                # Reverse map from 384-well to 96-well position
+                _, well_pos = WellMapper.reverse_map_384_to_96(well_384_index)
+
+                # Calculate 384-well position string
+                row_384 = chr(ord('A') + row_384_idx)
                 well_384 = f"{row_384}{col_384}"
                 
                 # Build Excel row matching existing structure
@@ -2122,6 +2196,15 @@ class BayesianOptimizer:
                     detergent_col = factor_col_indices['detergent']
                     detergent_type = str(excel_row[detergent_col]).strip()
 
+                    if DEBUG:
+                        print(f"\n[DEBUG DETERGENT] Row {idx+1}:")
+                        print(f"  Detergent type: '{detergent_type}'")
+                        print(f"  per_level_concs exists: {per_level_concs is not None}")
+                    if per_level_concs and DEBUG:
+                        print(f"  per_level_concs keys: {list(per_level_concs.keys())}")
+                        if 'detergent' in per_level_concs:
+                            print(f"  per_level_concs['detergent']: {per_level_concs['detergent']}")
+
                     # Initialize all detergent columns to 0
                     for det in detergent_values:
                         det_clean = det.lower().replace(' ', '_').replace('-', '_')
@@ -2132,20 +2215,33 @@ class BayesianOptimizer:
 
                     if detergent_type and per_level_det and detergent_type in per_level_det:
                         # Use per-level concentrations (stock and final are predefined)
+                        if DEBUG:
+                            print(f"  → Using per-level concentrations")
                         level_data = per_level_det[detergent_type]
                         detergent_stock = level_data['stock']
                         desired_conc = level_data['final']
+                        if DEBUG:
+                            print(f"  → Stock: {detergent_stock}, Final: {desired_conc}")
 
                         if detergent_stock > 0:
                             volume = (desired_conc * final_volume) / detergent_stock
                             det_clean = detergent_type.lower().replace(' ', '_').replace('-', '_')
                             volumes[det_clean] = round(volume, 2)
                             total_volume_used += volumes[det_clean]
+                            if DEBUG:
+                                print(f"  → Calculated volume for '{det_clean}': {volumes[det_clean]} µL")
+                        else:
+                            if DEBUG:
+                                print(f"  → ERROR: Stock is 0, cannot calculate volume")
 
                     elif detergent_type and 'detergent_concentration' in factor_col_indices:
                         # Fall back to normal mode (get concentration from BO suggestion)
+                        if DEBUG:
+                            print(f"  → Using normal mode (detergent_concentration from BO)")
                         detergent_conc_col = factor_col_indices['detergent_concentration']
                         detergent_conc_value = excel_row[detergent_conc_col]
+                        if DEBUG:
+                            print(f"  → Concentration value: {detergent_conc_value}")
 
                         if detergent_conc_value is not None:
                             desired_conc = float(detergent_conc_value)
@@ -2156,6 +2252,13 @@ class BayesianOptimizer:
                                 det_clean = detergent_type.lower().replace(' ', '_').replace('-', '_')
                                 volumes[det_clean] = round(volume, 2)
                                 total_volume_used += volumes[det_clean]
+                                if DEBUG:
+                                    print(f"  → Calculated volume for '{det_clean}': {volumes[det_clean]} µL")
+                    else:
+                        if DEBUG:
+                            print(f"  → WARNING: No per-level concs and no detergent_concentration column!")
+                            print(f"    Detergent type: '{detergent_type}'")
+                            print(f"    per_level_det has this type: {detergent_type in per_level_det if per_level_det else False}")
                 
                 # Handle reducing_agent (categorical - one column per reducing agent type)
                 if 'reducing_agent' in factor_col_indices:
@@ -2202,38 +2305,48 @@ class BayesianOptimizer:
                     if internal_name in ['buffer pH', 'buffer_concentration', 'detergent', 'detergent_concentration',
                                         'reducing_agent', 'reducing_agent_concentration']:
                         continue
-                    
+
                     if internal_name in stock_concs:
                         factor_value = excel_row[col_idx]
-                        
+
                         if factor_value is not None:
                             desired_conc = float(factor_value)
                             stock_conc = stock_concs[internal_name]
-                            
+
                             if stock_conc > 0:
                                 volume = (desired_conc * final_volume) / stock_conc
                                 volumes[internal_name] = round(volume, 2)
                                 total_volume_used += volumes[internal_name]
-                
+
+                # Calculate protein volume (added manually, not by robot)
+                if protein_stock and protein_final and protein_stock > 0:
+                    protein_volume = (protein_final * final_volume) / protein_stock
+                    protein_volume = round(protein_volume, 2)
+                    total_volume_used += protein_volume
+                    # Note: protein volume is NOT added to CSV (manual addition)
+
                 # Calculate water
                 water_volume = round(final_volume - total_volume_used, 2)
                 volumes["water"] = water_volume
                 
                 volume_rows.append(volumes)
             
-            print(f"\nGenerated {len(new_excel_rows)} new rows")
-            print(f"First Excel row: {new_excel_rows[0]}")
-            print(f"First volume row: {volume_rows[0]}")
+            if DEBUG:
+                print(f"\nGenerated {len(new_excel_rows)} new rows")
+                print(f"First Excel row: {new_excel_rows[0]}")
+                print(f"First volume row: {volume_rows[0]}")
             
             # Write to Excel at specific row numbers (not append!)
             start_row = last_row_with_data + 1
-            print(f"\nWriting to Excel starting at row {start_row}")
+            if DEBUG:
+                print(f"\nWriting to Excel starting at row {start_row}")
             
             for idx, excel_row in enumerate(new_excel_rows):
                 row_num = start_row + idx
                 for col_idx, value in enumerate(excel_row, start=1):
                     ws.cell(row=row_num, column=col_idx, value=value)
-                print(f"  Wrote row {row_num}: ID={excel_row[0]}")
+                if DEBUG:
+                    print(f"  Wrote row {row_num}: ID={excel_row[0]}")
             
             # Save Excel
             wb.save(excel_path)
@@ -2248,20 +2361,15 @@ class BayesianOptimizer:
 
             csv_path = f"{base_path}_BO_Batch{batch_number}_{date_str}_Opentron.csv"
             
-            # Find which pH values are actually used in this batch
-            used_ph_values = set()
-            for volumes in volume_rows:
-                for ph in all_ph_values:
-                    buffer_key = f"buffer_{ph}"
-                    if volumes.get(buffer_key, 0) > 0:
-                        used_ph_values.add(ph)
-            
             # Build CSV headers with categorical columns
+            # IMPORTANT: Include ALL possible values (not just used ones) to maintain
+            # consistent column order across factorial design and BO batch exports
+            # This way, Opentrons robot configuration doesn't need to change between runs
             csv_headers = []
-            
-            # Add buffer pH columns (only used ones)
-            if used_ph_values:
-                for ph in sorted(used_ph_values):
+
+            # Add buffer pH columns (ALL pH values, not just used ones)
+            if all_ph_values:
+                for ph in sorted(all_ph_values):
                     csv_headers.append(f"buffer_{ph}")
             
             # Add detergent columns (all unique detergent types)
@@ -2277,13 +2385,29 @@ class BayesianOptimizer:
                     csv_headers.append(agent_clean)
             
             # Add other simple factors (skip categorical factors and their concentrations)
+            if DEBUG:
+                print(f"\n[DEBUG CSV] Building CSV headers for numeric factors:")
+                print(f"  factor_col_indices keys: {list(factor_col_indices.keys())}")
+                print(f"  Skipping: buffer pH, buffer_concentration, detergent, detergent_concentration, reducing_agent, reducing_agent_concentration")
             for internal_name in factor_col_indices.keys():
                 if internal_name not in ['buffer pH', 'buffer_concentration', 'detergent', 'detergent_concentration',
                                         'reducing_agent', 'reducing_agent_concentration']:
+                    if DEBUG:
+                        print(f"  → Adding '{internal_name}' to CSV headers")
                     csv_headers.append(internal_name)
+                else:
+                    if DEBUG:
+                        print(f"  → Skipping '{internal_name}' (categorical or concentration)")
             
             csv_headers.append("water")
-            
+
+            if DEBUG:
+                print(f"\n[DEBUG CSV] Final CSV headers ({len(csv_headers)} total):")
+                print(f"  {csv_headers}")
+                print(f"\n[DEBUG CSV] First volume row:")
+                if volume_rows:
+                    print(f"  {volume_rows[0]}")
+
             # Write CSV
             with open(csv_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv_module.writer(f)

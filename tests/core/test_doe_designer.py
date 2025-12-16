@@ -105,10 +105,11 @@ class TestDoEDesignerWellMapping:
     """Test well mapping functionality"""
 
     def test_well_positions_column_major(self):
-        """Test that wells are filled in column-major order"""
+        """Test that wells are ordered for 384-well plate transfer"""
         designer = DoEDesigner()
 
-        # Create design with 8 combinations (fills first column)
+        # Create design with 8 combinations
+        # These map to first 8 positions in 384-well reading order
         factors = {
             'nacl': ['100', '200'],
             'glycerol': ['5', '10'],
@@ -124,15 +125,18 @@ class TestDoEDesignerWellMapping:
             factors, stock_concs, 200.0
         )
 
-        # First 8 wells should be A1-H1
-        expected_wells = ['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1', 'H1']
+        # First 8 samples should map to 384-well A1-A8
+        # Which come from 96-well odd columns in row A
+        expected_wells = ['A1', 'A3', 'A5', 'A7', 'A9', 'A11', 'A1', 'A3']
+        # Note: Samples 0-5 from plate 1, samples 6-7 from plate 2
         assert excel_df['Well_96'].tolist() == expected_wells
 
     def test_well_positions_multiple_columns(self):
-        """Test well positions across multiple columns"""
+        """Test well positions with 384-well ordering"""
         designer = DoEDesigner()
 
-        # Create design with 16 combinations (2 columns)
+        # Create design with 16 combinations
+        # Maps to 384-well A1-A16
         factors = {
             'nacl': ['100', '200', '300', '400'],
             'glycerol': ['5', '10'],
@@ -148,11 +152,15 @@ class TestDoEDesignerWellMapping:
             factors, stock_concs, 200.0
         )
 
-        # Check first and last wells
+        # First sample (384 A1) comes from 96-well A1 plate 1
         assert excel_df['Well_96'].iloc[0] == 'A1'
-        assert excel_df['Well_96'].iloc[7] == 'H1'
-        assert excel_df['Well_96'].iloc[8] == 'A2'
-        assert excel_df['Well_96'].iloc[15] == 'H2'
+        assert excel_df['Plate_96'].iloc[0] == 1
+        # Sample 6 (384 A7) comes from 96-well A1 plate 2
+        assert excel_df['Well_96'].iloc[6] == 'A1'
+        assert excel_df['Plate_96'].iloc[6] == 2
+        # Sample 12 (384 A13) comes from 96-well A1 plate 3
+        assert excel_df['Well_96'].iloc[12] == 'A1'
+        assert excel_df['Plate_96'].iloc[12] == 3
 
     def test_384_well_conversion(self):
         """Test 96-well to 384-well conversion"""
@@ -174,10 +182,12 @@ class TestDoEDesignerWellMapping:
         assert all(excel_df['Well_384'].str.match(r'^[A-P]\d+$'))
 
     def test_multiple_plates(self):
-        """Test design spanning multiple plates"""
+        """Test design spanning multiple plates with 384-well ordering"""
         designer = DoEDesigner()
 
-        # Create design with 100 combinations (2 plates)
+        # Create design with 20 combinations
+        # With 384-well ordering, each plate uses only 6 positions in row A
+        # So 20 samples span 4 plates (6+6+6+2)
         factors = {
             'nacl': ['100', '200', '300', '400', '500'],
             'glycerol': ['5', '10', '15', '20']
@@ -191,29 +201,28 @@ class TestDoEDesignerWellMapping:
             factors, stock_concs, 200.0
         )
 
-        # 5 * 4 = 20 combinations, should fit on plate 1
+        # 5 * 4 = 20 combinations
         assert len(excel_df) == 20
-        assert excel_df['Plate_96'].max() == 1
+        # With 384-well ordering: 6 samples per plate in first row
+        assert excel_df['Plate_96'].max() == 4
 
-        # Now test with more combinations
-        factors_large = {
-            'nacl': ['100', '200', '300', '400', '500'],
-            'glycerol': ['5', '10', '15', '20', '25'],
-            'mgcl2': ['1', '5', '10', '15']
+        # Now test with more combinations (24 samples = exactly 4 full plates)
+        factors_exact = {
+            'nacl': ['100', '200', '300', '400'],
+            'glycerol': ['5', '10', '15', '20', '25', '30']
         }
-        stock_concs_large = {
+        stock_concs_exact = {
             'nacl': 5000.0,
-            'glycerol': 100.0,
-            'mgcl2': 1000.0
+            'glycerol': 100.0
         }
 
         excel_df, _ = designer.build_factorial_design(
-            factors_large, stock_concs_large, 200.0
+            factors_exact, stock_concs_exact, 200.0
         )
 
-        # 5 * 5 * 4 = 100 combinations, should span 2 plates
-        assert len(excel_df) == 100
-        assert excel_df['Plate_96'].max() == 2
+        # 4 * 6 = 24 combinations, fills exactly 4 plates (6 per plate)
+        assert len(excel_df) == 24
+        assert excel_df['Plate_96'].max() == 4
 
 
 class TestDoEDesignerBufferPH:

@@ -425,7 +425,22 @@ class OptimizationPanelMixin:
                         warning_msg += "\nAnalysis will continue, but these constraints may not have the desired effect."
                         messagebox.showwarning("Constraint Warnings", warning_msg)
 
+                # DEBUG: Print before initializing
+                print("\n" + "="*80)
+                print("ABOUT TO INITIALIZE BAYESIAN OPTIMIZER")
+                print("="*80)
+                print(f"Data shape: {self.handler.clean_data.shape}")
+                print(f"Factor columns: {self.handler.factor_columns}")
+                print(f"Numeric factors: {self.handler.numeric_factors}")
+                print(f"Categorical factors: {self.handler.categorical_factors}")
+                print(f"Response columns: {self.selected_responses}")
+                print("="*80)
+
                 self.optimizer.initialize_optimizer()
+
+                print("\n" + "="*80)
+                print("✓ OPTIMIZER INITIALIZED SUCCESSFULLY")
+                print("="*80)
 
                 # Show constraint information with validation results
                 if self.response_constraints:
@@ -465,7 +480,12 @@ class OptimizationPanelMixin:
                 self.recommendations_text.insert(tk.END, "\nSuggested next experiments:\n\n")
 
                 # Get suggestions
+                print("\n" + "="*80)
+                print("GETTING BO SUGGESTIONS")
+                print("="*80)
                 suggestions = self.optimizer.get_next_suggestions(n=5)
+                print(f"✓ Got {len(suggestions)} suggestions")
+                print("="*80)
 
                 for i, suggestion in enumerate(suggestions, 1):
                     self.recommendations_text.insert(tk.END, f"Suggested Experiment #{i}:\n")
@@ -557,6 +577,16 @@ class OptimizationPanelMixin:
                 self._create_optimization_export_button()
 
             except Exception as e:
+                print("\n" + "="*80)
+                print("❌ ERROR DURING BO INITIALIZATION/SUGGESTIONS")
+                print("="*80)
+                print(f"Error type: {type(e).__name__}")
+                print(f"Error message: {str(e)}")
+                print("="*80)
+                import traceback
+                traceback.print_exc()
+                print("="*80)
+
                 self.recommendations_text.insert(tk.END,
                     f"Could not generate BO suggestions: {str(e)}\n"
                     "This may require more data points or only numeric factors.\n"

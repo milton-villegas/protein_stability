@@ -199,6 +199,99 @@ class WellMapper:
             return False
 
     @staticmethod
+    def reverse_map_384_to_96(well_384_index: int) -> Tuple[int, str]:
+        """
+        Reverse-map from 384-well sequential index to 96-well position.
+
+        This function takes a sample index (0, 1, 2, 3...) and treats it as
+        a 384-well position in reading order (A1, A2, A3...), then determines
+        which 96-well plate and position would transfer to that 384 location.
+
+        Args:
+            well_384_index: 0-based index in 384-well reading order (row-major)
+
+        Returns:
+            Tuple of (plate_96, well_96) where the sample should be placed
+            - plate_96: 96-well plate number (1-4)
+            - well_96: 96-well position string (e.g., "A1", "B3")
+
+        Examples:
+            >>> WellMapper.reverse_map_384_to_96(0)  # 384 A1
+            (1, 'A1')
+            >>> WellMapper.reverse_map_384_to_96(1)  # 384 A2
+            (1, 'A3')
+            >>> WellMapper.reverse_map_384_to_96(2)  # 384 A3
+            (1, 'A5')
+        """
+        import math
+
+        # Convert index to 384-well position (row-major order: A1, A2, A3...)
+        row_384_index = well_384_index // PLATE_384_COLS  # 0-15 for A-P
+        col_384 = (well_384_index % PLATE_384_COLS) + 1    # 1-24
+
+        # Determine which 96-well plate (each plate occupies 6 columns in 384)
+        # Plate 1: cols 1-6, Plate 2: cols 7-12, Plate 3: cols 13-18, Plate 4: cols 19-24
+        plate_96 = ((col_384 - 1) // 6) + 1
+
+        # Determine position within the 6-column block for this plate
+        col_within_plate = ((col_384 - 1) % 6) + 1  # 1-6
+
+        # Reverse the column mapping:
+        # 384 cols 1,2,3,4,5,6 → 96 cols 1,2,3,4,5,6,7,8,9,10,11,12
+        # 384 col 1 → 96 cols 1,2 | 384 col 2 → 96 cols 3,4 | etc.
+        base_col_96 = (col_within_plate - 1) * 2 + 1  # 1,3,5,7,9,11
+
+        # Reverse the row mapping:
+        # 384 rows A,B (0,1) → 96 row A | 384 rows C,D (2,3) → 96 row B | etc.
+        row_96_index = row_384_index // 2  # 0-7 for A-H
+        row_96_letter = chr(ord('A') + row_96_index)
+
+        # Determine if odd or even row in 384 determines column offset
+        # Even 384 row (0,2,4,6,8,10,12,14) → odd 96 column (1,3,5,7,9,11)
+        # Odd 384 row (1,3,5,7,9,11,13,15) → even 96 column (2,4,6,8,10,12)
+        if row_384_index % 2 == 0:  # Even row in 384
+            col_96 = base_col_96  # Odd column
+        else:  # Odd row in 384
+            col_96 = base_col_96 + 1  # Even column
+
+        well_96 = f"{row_96_letter}{col_96}"
+        return plate_96, well_96
+
+    @staticmethod
+    def generate_well_position_384_order(sample_index: int) -> Tuple[int, str, str]:
+        """
+        Generate 96-well position for a sample, ordered by 384-well reading order.
+
+        This is the main function to use for factorial design generation.
+        It ensures samples are numbered according to their final position
+        in the 384-well plate (reading left-to-right, top-to-bottom).
+
+        Args:
+            sample_index: 0-based sample index (in 384-well reading order)
+
+        Returns:
+            Tuple of (plate_96, well_96, well_384)
+            - plate_96: 96-well plate number (1-4)
+            - well_96: 96-well position where sample should be placed
+            - well_384: Final 384-well position (for reference)
+
+        Examples:
+            >>> WellMapper.generate_well_position_384_order(0)
+            (1, 'A1', 'A1')
+            >>> WellMapper.generate_well_position_384_order(1)
+            (1, 'A3', 'A2')
+        """
+        # Get 96-well position from reverse mapping
+        plate_96, well_96 = WellMapper.reverse_map_384_to_96(sample_index)
+
+        # Calculate corresponding 384 position for verification
+        row_384 = sample_index // PLATE_384_COLS
+        col_384 = (sample_index % PLATE_384_COLS) + 1
+        well_384 = f"{chr(ord('A') + row_384)}{col_384}"
+
+        return plate_96, well_96, well_384
+
+    @staticmethod
     def calculate_required_plates(num_samples: int) -> int:
         """
         Calculate number of 96-well plates required for given sample count.

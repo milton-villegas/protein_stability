@@ -438,6 +438,31 @@ class ExportPanelMixin:
                     unique_phs = sorted(self.handler.data[ph_col].dropna().unique())
                     buffer_ph_values = [str(ph) for ph in unique_phs]
 
+                # Get per-level concentrations (for categorical factors like detergents)
+                print("\n" + "="*80)
+                print("[DEBUG GUI] Checking for per-level concentrations")
+                print("="*80)
+                print(f"Handler has get_per_level_concs: {hasattr(self.handler, 'get_per_level_concs')}")
+                if hasattr(self.handler, 'get_per_level_concs'):
+                    per_level_concs = self.handler.get_per_level_concs()
+                    print(f"Returned per_level_concs: {per_level_concs}")
+                    print(f"Type: {type(per_level_concs)}")
+                    if per_level_concs:
+                        print(f"Keys: {list(per_level_concs.keys())}")
+                else:
+                    per_level_concs = None
+                    print("Method does not exist! Using None")
+                print("="*80)
+
+                # Get protein concentrations (for manual addition)
+                protein_stock = None
+                protein_final = None
+                if hasattr(self.handler, 'get_protein_concentrations'):
+                    protein_info = self.handler.get_protein_concentrations()
+                    if protein_info:
+                        protein_stock = protein_info.get('stock')
+                        protein_final = protein_info.get('final')
+
                 # Export
                 result = self.optimizer.export_bo_batch_to_files(
                     n_suggestions=n_suggestions,
@@ -445,7 +470,10 @@ class ExportPanelMixin:
                     excel_path=self.filepath,
                     stock_concs=stock_concs,
                     final_volume=final_volume,
-                    buffer_ph_values=buffer_ph_values
+                    buffer_ph_values=buffer_ph_values,
+                    per_level_concs=per_level_concs,
+                    protein_stock=protein_stock,
+                    protein_final=protein_final
                 )
 
                 if result:
