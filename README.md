@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/scout_logo.png" alt="SCOUT Logo" width="200">
+  <img src="assets/scout_logo.png" alt="SCOUT Logo" width="350">
 </p>
 
 # SCOUT - Screening & Condition Optimization Utility Tool
