@@ -13,5 +13,8 @@ seaborn>=0.13.0,<1.0.0
 # Excel support
 openpyxl>=3.1.0,<4.0.0
 
+# DoE design generation
+pyDOE3>=1.0.0,<2.0.0
+
 # Bayesian Optimization (optional)
 ax-platform>=1.0.0,<2.0.0
