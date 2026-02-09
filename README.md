@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/scout_logo.png" alt="SCOUT Logo" width="200">
+</p>
+
 # SCOUT - Screening & Condition Optimization Utility Tool
 
 A unified application for designing, executing, and analyzing experimental screens:
