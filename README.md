@@ -1,4 +1,4 @@
-# SCOUT - Screening & Condition Optimization for Unified Testing
+# SCOUT - Screening & Condition Optimization Utility Tool
 
 A unified application for designing, executing, and analyzing experimental screens:
 
