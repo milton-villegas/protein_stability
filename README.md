@@ -15,7 +15,10 @@ A unified application for designing, executing, and analyzing protein stability 
 
 ```
 protein-stability-doe/
-├─ main.py                      # Main application launcher
+├─ run.command                  # macOS launcher (double-click)
+├─ run.bat                      # Windows launcher (double-click)
+├─ run.sh                       # Linux launcher
+├─ main.py                      # Main application entry point
 ├─ gui/
 │  ├─ main_window.py           # Main GUI window
 │  └─ tabs/
@@ -52,7 +55,19 @@ protein-stability-doe/
 
 ## Quick start
 
-### 1) Set up a Python environment
+### Easy Launch (Recommended)
+
+The launcher scripts automatically set up the environment and install dependencies on first run.
+
+| Platform | File | How to run |
+|----------|------|------------|
+| **macOS** | `run.command` | Double-click in Finder |
+| **Windows** | `run.bat` | Double-click in Explorer |
+| **Linux** | `run.sh` | Run `chmod +x run.sh && ./run.sh` |
+
+> **Note:** Python 3.8+ must be installed. On Linux, you may also need to install tkinter (`sudo apt install python3-tk` on Ubuntu/Debian).
+
+### Manual Setup (Alternative)
 
 ```bash
 # Create virtual environment
@@ -66,13 +81,8 @@ source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
-# For development/testing:
-pip install -r requirements-dev.txt
-```
 
-### 2) Launch the Application
-
-```bash
+# Launch
 python main.py
 ```
 
