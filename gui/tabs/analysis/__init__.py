@@ -84,6 +84,9 @@ class AnalysisTab(
         self.selected_responses = []
         self.response_directions = {}
 
+        # Bayesian Optimization toggle
+        self.bo_enabled_var = tk.BooleanVar(value=True)
+
         # Debug log collector
         self.debug_log = []
         self.CONSOLE_DEBUG = False
@@ -143,9 +146,22 @@ class AnalysisTab(
         info_btn = ttk.Button(config_frame, text="?", width=2, command=self.show_model_guide)
         info_btn.grid(row=0, column=2, sticky='w', padx=(2, 0), pady=5)
 
+        # Bayesian Optimization checkbox
+        self.bo_checkbox = ttk.Checkbutton(
+            config_frame, text="Enable Bayesian Optimization (suggests next experiments)",
+            variable=self.bo_enabled_var
+        )
+        self.bo_checkbox.grid(row=1, column=0, columnspan=3, sticky='w', padx=5, pady=(2, 5))
+
+        if not AX_AVAILABLE:
+            self.bo_checkbox.config(state='disabled')
+            self.bo_enabled_var.set(False)
+            ttk.Label(config_frame, text="(ax-platform not installed)",
+                     font=('TkDefaultFont', 8)).grid(row=1, column=2, sticky='w', padx=5)
+
         self.analyze_btn = ttk.Button(config_frame, text="Analyze Data",
                                       command=self.analyze_data, state='disabled')
-        self.analyze_btn.grid(row=0, column=3, padx=20, pady=5)
+        self.analyze_btn.grid(row=0, column=3, rowspan=2, padx=20, pady=5)
 
     def create_results_tab(self):
         """Create the Results tab with results notebook and export buttons"""
@@ -251,21 +267,28 @@ class AnalysisTab(
                                                              wrap=tk.WORD, font=('Courier', 14))
         self.recommendations_text.pack(fill='both', expand=True, padx=5, pady=5)
 
-        # Tab 6: Optimization Details
+        # Tab 6: Optimization Details (always create when AX available, content depends on toggle)
         if AX_AVAILABLE:
-            optimization_container = ttk.Frame(self.notebook)
-            self.notebook.add(optimization_container, text="Optimization Details")
+            self.optimization_container = ttk.Frame(self.notebook)
+            self.notebook.add(self.optimization_container, text="Optimization Details")
 
-            opt_header = ttk.Frame(optimization_container)
+            opt_header = ttk.Frame(self.optimization_container)
             opt_header.pack(fill='x', padx=5, pady=2)
             ttk.Label(opt_header, text="Bayesian Optimization Analysis", font=('TkDefaultFont', 10, 'bold')).pack(side='left')
             ttk.Button(opt_header, text="i", width=3,
                       command=lambda: self.show_tooltip("optimization")).pack(side='right', padx=5)
 
-            self.export_frame_opt = ttk.LabelFrame(optimization_container, text="Export", padding=10)
+            self.export_frame_opt = ttk.LabelFrame(self.optimization_container, text="Export", padding=10)
             self.export_frame_opt.pack(fill='x', padx=10, pady=5)
 
-            self.optimization_frame = self.create_scrollable_frame(optimization_container)
+            self.optimization_frame = self.create_scrollable_frame(self.optimization_container)
+
+            self.bo_disabled_label = ttk.Label(
+                self.optimization_container,
+                text="Bayesian Optimization is disabled.\n"
+                     "Enable it in the Analysis tab to get optimization details.",
+                font=('TkDefaultFont', 12), justify='center'
+            )
 
     def create_scrollable_frame(self, parent):
         """Create a scrollable frame for plot display with comprehensive mousewheel support"""

@@ -316,8 +316,8 @@ class OptimizationPanelMixin:
 
         self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
 
-        # Add Bayesian Optimization suggestions if available
-        if AX_AVAILABLE and self.optimizer:
+        # Add Bayesian Optimization suggestions if available and enabled
+        if AX_AVAILABLE and self.bo_enabled_var.get() and self.optimizer:
             self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
             self.recommendations_text.insert(tk.END, "BAYESIAN OPTIMIZATION SUGGESTIONS\n")
             self.recommendations_text.insert(tk.END, "="*80 + "\n")
@@ -596,6 +596,25 @@ class OptimizationPanelMixin:
                     self.export_bo_button.config(state='disabled')
 
             self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
+        elif AX_AVAILABLE and not self.bo_enabled_var.get():
+            self.recommendations_text.insert(tk.END, "\n" + "="*80 + "\n")
+            self.recommendations_text.insert(tk.END, "BAYESIAN OPTIMIZATION DISABLED\n")
+            self.recommendations_text.insert(tk.END, "="*80 + "\n")
+            self.recommendations_text.insert(tk.END,
+                "Bayesian Optimization is disabled. Enable it in the Analysis tab\n"
+                "to get experiment suggestions and optimization details.\n")
+            self.recommendations_text.insert(tk.END, "="*80 + "\n")
+
+            # Disable BO export button
+            if hasattr(self, 'export_bo_button'):
+                self.export_bo_button.config(state='disabled')
+
+        # Update Optimization Details tab content based on BO toggle
+        if AX_AVAILABLE and hasattr(self, 'bo_disabled_label'):
+            if self.bo_enabled_var.get():
+                self.bo_disabled_label.pack_forget()
+            else:
+                self.bo_disabled_label.pack(expand=True, pady=20)
 
         # Display collected debug log at the end (only if debug mode enabled)
         # Set SHOW_DEBUG_LOG = True if you need to see internal debugging information
@@ -614,7 +633,7 @@ class OptimizationPanelMixin:
         Creates either a Pareto plots button for multi-objective optimization
         or a BO plots button for single-objective optimization.
         """
-        if not AX_AVAILABLE or not hasattr(self, 'export_frame_opt'):
+        if not AX_AVAILABLE or not hasattr(self, 'export_frame_opt') or not self.bo_enabled_var.get():
             return
 
         for widget in self.export_frame_opt.winfo_children():
@@ -654,7 +673,7 @@ class OptimizationPanelMixin:
         - Optimizer must be initialized
         - At least 2 numeric factors for single-objective plots
         """
-        if not AX_AVAILABLE or not self.optimizer:
+        if not AX_AVAILABLE or not self.optimizer or not self.bo_enabled_var.get():
             return
 
         for widget in self.optimization_frame.winfo_children():
