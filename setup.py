@@ -12,7 +12,7 @@ setup(
     description="Design of Experiments (DoE) analysis tool for protein stability studies",
     author="Milton F. Villegas",
     author_email="miltonfvillegas@gmail.com",
-    python_requires=">=3.8,<4.0",
+    python_requires=">=3.10,<4.0",
     packages=find_packages(exclude=["tests", "tests.*"]),
     install_requires=requirements,
     extras_require={
@@ -26,10 +26,9 @@ setup(
         "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
 )

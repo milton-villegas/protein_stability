@@ -10,7 +10,7 @@ SCOUT is in active development and feedback is appreciated.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.8+-blue" alt="Python">
+  <img src="https://img.shields.io/badge/python-3.10+-blue" alt="Python">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
   <img src="https://img.shields.io/github/last-commit/milton-villegas/SCOUT" alt="Last Commit">
@@ -32,7 +32,7 @@ Double-click the launcher to automatically set up the environment and install de
 | **Windows** | `run.bat` | Double-click in Explorer |
 | **Linux** | `run.sh` | Run `chmod +x run.sh && ./run.sh` |
 
-> **Note:** Python 3.8+ must be installed. On Linux, you may also need tkinter (`sudo apt install python3-tk`).
+> **Note:** Python 3.10+ must be installed. On Linux, you may also need tkinter (`sudo apt install python3-tk`).
 
 For manual installation see [Developer Information](#developer-information)
 
@@ -112,7 +112,7 @@ Buffer,Glycerol,NaCl,pH Buffer
 <summary>Troubleshooting</summary>
 
 - **Missing dependencies** → Run `pip install -r requirements.txt`
-- **GUI doesn't launch** → Ensure Python 3.8+: `python --version`
+- **GUI doesn't launch** → Ensure Python 3.10+: `python --version`
 - **Tests failing** → Install dev dependencies: `pip install -r requirements-dev.txt`
 - **Pipette volume error** → Ensure volumes are ≤ pipette max
 
@@ -148,7 +148,7 @@ pytest tests/ -v
 - **GUI Framework**: Tkinter (cross-platform)
 - **Statistical Engine**: statsmodels
 - **Optimization**: Ax-Platform for Bayesian Optimization
-- **Python**: 3.8–3.11
+- **Python**: 3.10+
 
 </details>
 
