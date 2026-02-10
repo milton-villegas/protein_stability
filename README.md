@@ -1,8 +1,23 @@
 <p align="center">
-  <img src="assets/scout_logo.png" alt="SCOUT Logo" width="350">
+  <img src="assets/scout_logo.png" alt="SCOUT Logo" width="150">
 </p>
 
-# SCOUT - Screening & Condition Optimization Utility Tool
+<h1 align="center">SCOUT</h1>
+<p align="center"><b>Screening & Condition Optimization Utility Tool</b></p>
+
+<p align="center">
+SCOUT is in active development and feedback is appreciated.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.8+-blue" alt="Python">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
+  <img src="https://img.shields.io/github/last-commit/milton-villegas/protein_stability" alt="Last Commit">
+  <img src="https://img.shields.io/github/issues/milton-villegas/protein_stability" alt="Issues">
+</p>
+
+---
 
 A unified application for designing, executing, and analyzing experimental screens:
 
