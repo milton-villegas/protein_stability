@@ -118,9 +118,11 @@ Buffer,Glycerol,NaCl,pH Buffer
 
 </details>
 
+## Developer Information
+
 <details>
 
-<summary>Information for SCOUT developers</summary>
+<summary>Installation & Setup</summary>
 
 ### Developer installation
 
