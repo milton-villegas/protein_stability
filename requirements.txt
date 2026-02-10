@@ -16,5 +16,5 @@ openpyxl>=3.1.0,<4.0.0
 # DoE design generation
 pyDOE3>=1.0.0,<2.0.0
 
-# Bayesian Optimization (optional)
+# Bayesian Optimization
 ax-platform>=1.0.0,<2.0.0

@@ -124,23 +124,43 @@ class DataHandler:
         likely_factors = set()
 
         # Heuristic 1: Check against known factor names (smart default)
+        # Build set of known factor keywords for partial matching
+        _factor_keywords = set()
+        for internal_name, display_name in AVAILABLE_FACTORS.items():
+            # Split multi-word names into individual significant words
+            for word in internal_name.replace('_', ' ').split():
+                if len(word) >= 2:  # Skip very short words
+                    _factor_keywords.add(word.lower())
+            for word in display_name.split('(')[0].strip().split():
+                if len(word) >= 2:
+                    _factor_keywords.add(word.lower())
+
         for col in all_numeric:
             col_lower = col.lower()
             col_base = col.split('(')[0].strip().lower() if '(' in col else col_lower
 
             for internal_name, display_name in AVAILABLE_FACTORS.items():
+                display_base = display_name.split('(')[0].strip().lower()
                 if (col_lower == internal_name.lower() or
                     col_lower == display_name.lower() or
-                    col_base == display_name.split('(')[0].strip().lower()):
+                    col_base == display_base or
+                    col_base in _factor_keywords):
                     likely_factors.add(col)
                     break
 
-        # Heuristic 2: Check value patterns (factors have more repeating values)
+        # Heuristic 2: Check value patterns (factors have very few distinct levels AND low uniqueness)
+        # DoE factors typically have 2-10 designed levels with many repeating values.
+        # Responses are measured values - even with few rows, they tend to be mostly unique.
         for col in all_numeric:
             if col not in likely_factors:
-                unique_ratio = len(self.data[col].unique()) / len(self.data[col])
-                # If less than 50% unique values, likely a factor (designed combinations repeat)
-                if unique_ratio < 0.5:
+                n_unique = len(self.data[col].unique())
+                n_rows = len(self.data[col])
+                unique_ratio = n_unique / n_rows if n_rows > 0 else 1.0
+                # A column is likely a factor if it has few distinct levels AND those levels repeat.
+                # Both conditions must hold: few levels (<=10) AND low uniqueness ratio (<50%).
+                # This avoids misclassifying responses in small datasets (where n_unique is low
+                # but ratio is high) and in large datasets (where ratio is low but n_unique is high).
+                if n_unique <= 10 and unique_ratio < 0.5:
                     likely_factors.add(col)
 
         # Return numeric columns that are NOT likely factors

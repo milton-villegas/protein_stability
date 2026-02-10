@@ -208,8 +208,8 @@ class ModelPanelMixin:
             self.display_plots()
             self.display_recommendations()
 
-            # Display optimization plot if available and initialized
-            if AX_AVAILABLE and self.optimizer and self.optimizer.is_initialized:
+            # Display optimization plot if available, initialized, and BO enabled
+            if AX_AVAILABLE and self.bo_enabled_var.get() and self.optimizer and self.optimizer.is_initialized:
                 self.display_optimization_plot()
 
             self.export_stats_btn.config(state='normal')
