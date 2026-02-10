@@ -13,8 +13,8 @@ SCOUT is in active development and feedback is appreciated.
   <img src="https://img.shields.io/badge/python-3.8+-blue" alt="Python">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
-  <img src="https://img.shields.io/github/last-commit/milton-villegas/scout" alt="Last Commit">
-  <img src="https://img.shields.io/github/issues/milton-villegas/scout" alt="Issues">
+  <img src="https://img.shields.io/github/last-commit/milton-villegas/SCOUT" alt="Last Commit">
+  <img src="https://img.shields.io/github/issues/milton-villegas/SCOUT" alt="Issues">
 </p>
 
 ---
