@@ -77,7 +77,7 @@ class DesignFactory:
             return self._generate_full_factorial(factors)
         elif design_type == "lhs":
             n_samples = params.get("n_samples", 50)
-            use_smt = params.get("use_smt", False)
+            use_smt = params.get("use_smt", True)
             return self._generate_lhs(factors, n_samples, use_smt)
         elif design_type == "d_optimal":
             n_samples = params.get("n_samples", 20)

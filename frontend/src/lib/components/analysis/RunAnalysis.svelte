@@ -17,6 +17,7 @@
 	let boPlots = $state<Record<string, string>>({});
 
 	const MODEL_TYPES = [
+		{ value: 'auto', label: 'Auto (Recommended)' },
 		{ value: 'linear', label: 'Linear (main effects)' },
 		{ value: 'interactions', label: 'Interactions (2-way)' },
 		{ value: 'quadratic', label: 'Quadratic (full)' },
@@ -69,18 +70,26 @@
 				Object.keys(cons).length > 0 ? cons : undefined,
 			);
 
-			// 2. Run analysis
-			const result = await runAnalysis($selectedModelType);
-			$analysisResults = result.results;
-
-			// 3. Load plots (for first response)
-			selectedPlotResponse = '';
-			await loadPlots();
-
-			// 4. Compare models
+			// 2. Compare models first (needed for auto mode and Models tab)
+			$modelComparison = null;
+			let bestModel = $selectedModelType;
 			try {
 				$modelComparison = await compareModels();
+				if ($selectedModelType === 'auto' && $modelComparison?.recommendations) {
+					const firstResp = Object.keys($modelComparison.recommendations)[0];
+					if (firstResp) {
+						bestModel = $modelComparison.recommendations[firstResp].best_model || 'linear';
+					}
+				}
 			} catch {}
+
+			// 3. Run analysis with selected (or auto-detected) model
+			const result = await runAnalysis(bestModel);
+			$analysisResults = result.results;
+
+			// 4. Load plots (for first response)
+			selectedPlotResponse = '';
+			await loadPlots();
 
 			// 5. Get analysis summary
 			try {
