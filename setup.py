@@ -8,7 +8,7 @@ with open("requirements.txt") as f:
 
 setup(
     name="protein-stability-doe",
-    version="1.0.0",
+    version="0.1.0",
     description="Design of Experiments (DoE) analysis tool for protein stability studies",
     author="Milton F. Villegas",
     author_email="miltonfvillegas@gmail.com",
