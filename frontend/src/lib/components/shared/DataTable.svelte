@@ -24,7 +24,7 @@
 	}
 </script>
 
-<div class="overflow-auto h-full border border-base-300 rounded-lg">
+<div class="overflow-auto h-full min-h-64 border border-base-300 rounded-lg">
 	<table class="table table-xs table-pin-rows table-pin-cols">
 		<thead>
 			<tr>

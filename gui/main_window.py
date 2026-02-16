@@ -177,8 +177,8 @@ class ProteinDoESuite(tk.Tk):
         """Show about dialog"""
         messagebox.showinfo(
             "About",
-            "Protein Stability DoE Suite v1.0.0\n\n"
-            "Design of Experiments tool for protein stability studies\n\n"
+            "SCOUT v0.2.0\n\n"
+            "Screening & Condition Optimization Utility Tool\n\n"
             "Author: Milton F. Villegas\n"
             "Email: miltonfvillegas@gmail.com"
         )

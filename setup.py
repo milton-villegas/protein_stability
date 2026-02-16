@@ -1,5 +1,5 @@
 """
-Setup script for Protein Stability DoE Analysis Tool
+Setup script for SCOUT - Screening & Condition Optimization Utility Tool
 """
 from setuptools import setup, find_packages
 
@@ -7,9 +7,9 @@ with open("requirements.txt") as f:
     requirements = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
 setup(
-    name="protein-stability-doe",
+    name="scout",
     version="0.2.0",
-    description="Design of Experiments (DoE) analysis tool for protein stability studies",
+    description="SCOUT - Screening & Condition Optimization Utility Tool",
     author="Milton F. Villegas",
     author_email="miltonfvillegas@gmail.com",
     python_requires=">=3.10,<4.0",

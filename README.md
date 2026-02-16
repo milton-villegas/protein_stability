@@ -1,3 +1,12 @@
+---
+title: SCOUT
+emoji: 🔬
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 <p align="center">
   <img src="assets/scout_logo.png" alt="SCOUT Logo" width="150">
 </p>
@@ -6,42 +15,61 @@
 <p align="center"><b>Screening & Condition Optimization Utility Tool</b></p>
 
 <p align="center">
-SCOUT is in active development and feedback is appreciated.
+  <a href="https://huggingface.co/spaces/milton-villegas/SCOUT"><b>Try it live</b></a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue" alt="Python">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-Web%20%7C%20Desktop-lightgrey" alt="Platform">
   <img src="https://img.shields.io/github/last-commit/milton-villegas/SCOUT" alt="Last Commit">
-  <img src="https://img.shields.io/github/issues/milton-villegas/SCOUT" alt="Issues">
 </p>
 
 <p align="center">
-A Python toolkit for <b>Design of Experiments (DoE)</b>, statistical analysis, and <b>Bayesian Optimization</b> for protein stability, buffer screening, crystallization, and formulation studies.
+A web application for <b>Design of Experiments (DoE)</b>, statistical analysis, and <b>Bayesian Optimization</b><br>
+for protein stability, buffer screening, crystallization, and formulation studies.
 </p>
-
-## Installation
-
-Double-click the launcher to automatically set up the environment and install dependencies:
-
-| Platform | File | How to run |
-|----------|------|------------|
-| **macOS** | `run.command` | Double-click in Finder |
-| **Windows** | `run.bat` | Double-click in Explorer |
-| **Linux** | `run.sh` | Run `chmod +x run.sh && ./run.sh` |
-
-> **Note:** Python 3.10+ must be installed. On Linux, you may also need tkinter (`sudo apt install python3-tk`).
-
-For manual installation see [Developer Information](#developer-information)
 
 ## Features
 
-- **Design of Experiments (DoE)** — Full factorial, fractional factorial, Plackett-Burman, Box-Behnken, Central Composite, Latin Hypercube, D-Optimal
-- **Statistical Analysis** — Linear models, interaction effects, quadratic models, ANOVA
-- **Bayesian Optimization** — Smart suggestions for next experiments using Ax-Platform
+- **Design of Experiments** — Full factorial, fractional factorial, Plackett-Burman, Box-Behnken, Central Composite, Latin Hypercube (SMT-optimized), D-Optimal
+- **Statistical Analysis** — Auto model selection, interaction effects, quadratic models, model comparison
+- **Bayesian Optimization** — Multi-objective suggestions for next experiments using Ax-Platform
+- **Opentron Export** — Excel (3 sheets) and CSV with volume calculations, well positions, and reagent setup
 - **Visualization** — Main effects, interaction plots, residual diagnostics, Pareto fronts
-- **Opentrons Integration** — Export CSV for automated liquid handling
+
+## Quick Start
+
+**Online (recommended):** [Try the live demo](https://huggingface.co/spaces/milton-villegas/SCOUT) — no installation needed.
+
+## Run Offline
+
+To run the web version locally on your machine:
+
+| Platform | Launcher | What it does |
+|----------|----------|--------------|
+| **macOS** | `start-web.command` | Double-click to launch |
+| **Windows** | `start-web.bat` | Double-click to launch |
+| **Linux** | `start-web.sh` | `chmod +x start-web.sh && ./start-web.sh` |
+
+Opens automatically at **http://localhost:5173**
+
+> **Requirements:** Python 3.10+ and Node.js 20+. First run installs dependencies automatically.
+
+<details>
+<summary>Alternative: Desktop App (Tkinter)</summary>
+
+A legacy desktop interface is available via `python main.py` or the platform launchers:
+
+| Platform | File |
+|----------|------|
+| **macOS** | `run.command` |
+| **Windows** | `run.bat` |
+| **Linux** | `run.sh` |
+
+> Note: The web version has a more modern UI and all the latest features.
+
+</details>
 
 ## Documentation
 
@@ -51,35 +79,35 @@ For manual installation see [Developer Information](#developer-information)
 ## More Information
 
 <details>
-
 <summary>Repository structure</summary>
 
 ```
 SCOUT/
-├─ run.command              # macOS launcher
-├─ run.bat                  # Windows launcher
-├─ run.sh                   # Linux launcher
-├─ main.py                  # Application entry point
-├─ gui/                     # User interface
-│  ├─ main_window.py
-│  └─ tabs/
-│     ├─ designer_tab.py    # DoE Designer
-│     └─ analysis_tab.py    # Analysis & optimization
-├─ core/                    # Business logic
-│  ├─ doe_designer.py       # Design generation
-│  ├─ doe_analyzer.py       # Statistical analysis
-│  ├─ optimizer.py          # Bayesian optimization
-│  └─ ...
-├─ opentrons/               # Robot protocol
-│  └─ protein_stability_doe.py
-├─ tests/                   # Unit tests
-└─ requirements.txt         # Dependencies
+├─ backend/                    # FastAPI web API
+│  ├─ main.py                  # App entry point
+│  ├─ routers/                 # API endpoints
+│  ├─ services/                # Business logic wrappers
+│  └─ schemas/                 # Request/response models
+├─ frontend/                   # SvelteKit web UI
+│  └─ src/
+│     ├─ routes/               # Pages (design, analysis)
+│     └─ lib/                  # Components, stores, API client
+├─ core/                       # Shared business logic
+│  ├─ doe_designer.py          # Design generation
+│  ├─ doe_analyzer.py          # Statistical analysis
+│  ├─ optimizer.py             # Bayesian optimization
+│  ├─ volume_calculator.py     # C1V1=C2V2 calculations
+│  └─ well_mapper.py           # 96/384-well plate mapping
+├─ gui/                        # Tkinter desktop UI (offline)
+├─ opentrons/                  # Robot protocol
+├─ tests/                      # 400+ unit tests
+├─ Dockerfile                  # Hugging Face Spaces deployment
+├─ start-web.sh                # Local web launcher
+└─ main.py                     # Desktop app entry point
 ```
-
 </details>
 
 <details>
-
 <summary>Opentrons Protocol</summary>
 
 Upload `opentrons/protein_stability_doe.py` to the Opentrons App (API Level 2.20).
@@ -95,60 +123,25 @@ Upload `opentrons/protein_stability_doe.py` to the Opentrons App (API Level 2.20
 
 - **Left**: `p300_multi` (96→384 transfers)
 - **Right**: `p300_single` (buffer preparation)
-
-### CSV format
-
-```
-Buffer,Glycerol,NaCl,pH Buffer
-150,20,10,5
-140,30,15,5
-```
-
 </details>
 
 <details>
+<summary>Developer setup</summary>
 
-<summary>Troubleshooting</summary>
-
-- **Missing dependencies** → Run `pip install -r requirements.txt`
-- **GUI doesn't launch** → Ensure Python 3.10+: `python --version`
-- **Tests failing** → Install dev dependencies: `pip install -r requirements-dev.txt`
-- **Pipette volume error** → Ensure volumes are ≤ pipette max
-
-</details>
-
-## Developer Information
-
-<details>
-
-<summary>Installation & Setup</summary>
-
-### Developer installation
-
-To develop on SCOUT please fork this repository and then install locally:
-
-```
-git clone https://github.com/YOUR_USER/SCOUT
+```bash
+git clone https://github.com/milton-villegas/SCOUT
 cd SCOUT
 pip install -e .
 pip install -r requirements-dev.txt
-```
-
-### Running tests
-
-```
 pytest tests/ -v
 ```
 
-71 unit tests covering core modules.
+### Stack
 
-### Architecture
-
-- **GUI Framework**: Tkinter (cross-platform)
-- **Statistical Engine**: statsmodels
-- **Optimization**: Ax-Platform for Bayesian Optimization
+- **Backend**: FastAPI + uvicorn
+- **Frontend**: SvelteKit + Tailwind + DaisyUI
+- **Analysis**: statsmodels, Ax-Platform, SMT
 - **Python**: 3.10+
-
 </details>
 
 ## License

@@ -3,12 +3,9 @@
 import os
 
 # CORS origins allowed to access the API
-CORS_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:4173",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:4173",
-]
+# In production (Docker), frontend is served from same origin so CORS isn't needed.
+# These are for local development where frontend runs on a separate port.
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:4173,http://127.0.0.1:5173,http://127.0.0.1:4173").split(",")
 
 # Upload directory for temporary files
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
