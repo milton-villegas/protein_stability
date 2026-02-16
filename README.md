@@ -1,3 +1,12 @@
+---
+title: SCOUT
+emoji: 🔬
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 <p align="center">
   <img src="assets/scout_logo.png" alt="SCOUT Logo" width="150">
 </p>
@@ -31,25 +40,36 @@ for protein stability, buffer screening, crystallization, and formulation studie
 
 ## Quick Start
 
-**Web (recommended):** Use the [live demo](https://huggingface.co/spaces/milton-villegas/SCOUT) — no installation needed.
+**Online (recommended):** [Try the live demo](https://huggingface.co/spaces/milton-villegas/SCOUT) — no installation needed.
 
-**Local web app:**
-```bash
-./start-web.sh
-```
-Opens at http://localhost:5173 (frontend) with API at http://localhost:8000.
+## Run Offline
 
-## Offline Desktop App
+To run the web version locally on your machine:
 
-A Tkinter desktop version is also available for offline use.
+| Platform | Launcher | What it does |
+|----------|----------|--------------|
+| **macOS** | `start-web.command` | Double-click to launch |
+| **Windows** | `start-web.bat` | Double-click to launch |
+| **Linux** | `start-web.sh` | `chmod +x start-web.sh && ./start-web.sh` |
 
-| Platform | File | How to run |
-|----------|------|------------|
-| **macOS** | `run.command` | Double-click in Finder |
-| **Windows** | `run.bat` | Double-click in Explorer |
-| **Linux** | `run.sh` | Run `chmod +x run.sh && ./run.sh` |
+Opens automatically at **http://localhost:5173**
 
-> Requires Python 3.10+. On Linux: `sudo apt install python3-tk`.
+> **Requirements:** Python 3.10+ and Node.js 20+. First run installs dependencies automatically.
+
+<details>
+<summary>Alternative: Desktop App (Tkinter)</summary>
+
+A legacy desktop interface is available via `python main.py` or the platform launchers:
+
+| Platform | File |
+|----------|------|
+| **macOS** | `run.command` |
+| **Windows** | `run.bat` |
+| **Linux** | `run.sh` |
+
+> Note: The web version has a more modern UI and all the latest features.
+
+</details>
 
 ## Documentation
 
