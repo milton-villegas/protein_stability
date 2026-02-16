@@ -1,3 +1,12 @@
+---
+title: SCOUT
+emoji: 🧪
+colorFrom: green
+colorTo: blue
+sdk: docker
+pinned: false
+---
+
 <p align="center">
   <img src="assets/scout_logo.png" alt="SCOUT Logo" width="150">
 </p>
