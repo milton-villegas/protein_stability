@@ -1,20 +1,28 @@
 """Analysis routes - upload, configure, run analysis, plots, optimization"""
 
+import json
 import os
 import tempfile
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from typing import Optional
 
 from backend.dependencies import get_current_session
 from backend.schemas.analysis import (
-    AnalysisConfigureRequest, AnalysisRunRequest, AnalysisRunResponse,
-    OptimizeRequest, OptimizeResponse, UploadResponse,
+    AnalysisConfigureRequest, AnalysisRunRequest,
+    OptimizeRequest, UploadResponse,
 )
 from backend.services import analysis_service, plot_service, optimization_service
+from backend.services.analysis_service import _make_serializable
 
 router = APIRouter()
+
+
+def safe_json_response(data: dict) -> JSONResponse:
+    """Return a JSONResponse after converting all numpy/pandas types"""
+    clean = _make_serializable(data)
+    return JSONResponse(content=clean)
 
 
 @router.post("/upload")
@@ -79,7 +87,7 @@ async def configure_analysis(
         if body.constraints:
             session["response_constraints"] = body.constraints
 
-        return result
+        return safe_json_response(result)
     except Exception as e:
         raise HTTPException(400, str(e))
 
@@ -112,7 +120,7 @@ async def run_analysis(
                 response_col,
             )
 
-        return {"results": results}
+        return safe_json_response({"results": results})
     except Exception as e:
         raise HTTPException(400, str(e))
 
@@ -125,7 +133,8 @@ async def compare_models(session: dict = Depends(get_current_session)):
         raise HTTPException(400, "No data configured")
 
     try:
-        return analysis_service.compare_models(analyzer)
+        result = analysis_service.compare_models(analyzer)
+        return safe_json_response(result)
     except Exception as e:
         raise HTTPException(400, str(e))
 
@@ -142,7 +151,7 @@ async def get_main_effects(
 
     try:
         effects = analysis_service.get_main_effects(analyzer, response)
-        return {"effects": effects}
+        return safe_json_response({"effects": effects})
     except Exception as e:
         raise HTTPException(400, str(e))
 
@@ -189,7 +198,7 @@ async def run_optimization(
             body.constraints,
             body.n_suggestions,
         )
-        return OptimizeResponse(**result)
+        return safe_json_response(result)
     except Exception as e:
         raise HTTPException(400, str(e))
 
