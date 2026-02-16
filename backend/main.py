@@ -3,9 +3,17 @@ SCOUT Web Backend
 FastAPI application serving the DoE Suite API
 """
 
+import logging
 import sys
 import os
 from contextlib import asynccontextmanager
+
+# Configure logging to show debug info from backend modules
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

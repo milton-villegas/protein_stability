@@ -4,7 +4,8 @@
 	import FactorEditDialog from '$lib/components/design/FactorEditDialog.svelte';
 	import DesignTypeSelector from '$lib/components/design/DesignTypeSelector.svelte';
 	import ExportControls from '$lib/components/design/ExportControls.svelte';
-	import { currentFactors } from '$lib/stores/design';
+	import DataTable from '$lib/components/shared/DataTable.svelte';
+	import { currentFactors, designResult } from '$lib/stores/design';
 	import { addFromAvailable, addFactor, updateFactor, getFactors } from '$lib/api/design';
 	import { showToast } from '$lib/stores/ui';
 	import { onMount } from 'svelte';
@@ -58,21 +59,43 @@
 	}
 </script>
 
-<div class="grid grid-cols-12 gap-4">
-	<!-- Left: Available Factors -->
-	<div class="col-span-3">
-		<FactorList onSelect={handleSelectAvailable} />
+<div class="flex flex-col gap-3" style="height: calc(100vh - 10rem);">
+	<!-- Top: Factors panel (fixed height, scrollable inside) -->
+	<div class="grid grid-cols-12 gap-3 min-h-0" style="height: 45%;">
+		<div class="col-span-3 card bg-base-200 shadow p-3 overflow-hidden">
+			<FactorList onSelect={handleSelectAvailable} />
+		</div>
+		<div class="col-span-9 card bg-base-200 shadow p-3 overflow-hidden">
+			<SelectedFactors onEdit={handleEditFactor} />
+		</div>
 	</div>
 
-	<!-- Right: Design Configuration -->
-	<div class="col-span-9 flex flex-col gap-4">
-		<SelectedFactors onEdit={handleEditFactor} />
-
-		<div class="grid grid-cols-2 gap-4">
+	<!-- Middle: Design Type + Settings -->
+	<div class="grid grid-cols-12 gap-3 shrink-0">
+		<div class="col-span-3">
 			<DesignTypeSelector bind:designParams />
+		</div>
+		<div class="col-span-9">
 			<ExportControls {designParams} />
 		</div>
 	</div>
+
+	<!-- Bottom: Generated design table (fills remaining space) -->
+	{#if $designResult}
+		<div class="card bg-base-200 shadow p-3 flex-1 min-h-0 flex flex-col overflow-hidden">
+			<div class="flex items-center gap-3 mb-2 shrink-0">
+				<h3 class="font-semibold text-sm">Generated Design</h3>
+				<span class="badge badge-sm badge-primary">{$designResult.total_runs} runs</span>
+				<span class="badge badge-sm badge-secondary">{$designResult.plates_required} plate(s)</span>
+				{#each $designResult.warnings as w}
+					<span class="badge badge-sm badge-warning">{w}</span>
+				{/each}
+			</div>
+			<div class="flex-1 min-h-0">
+				<DataTable data={$designResult.design_points} maxRows={100} />
+			</div>
+		</div>
+	{/if}
 </div>
 
 <FactorEditDialog

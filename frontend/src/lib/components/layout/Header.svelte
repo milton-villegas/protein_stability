@@ -2,6 +2,8 @@
 	import { projectInfo } from '$lib/stores/project';
 	import { createProject, saveProject, loadProject } from '$lib/api/project';
 	import { sessionActive } from '$lib/stores/project';
+	import { currentFactors, designResult } from '$lib/stores/design';
+	import { getFactors } from '$lib/api/design';
 	import { showToast } from '$lib/stores/ui';
 
 	let fileInput: HTMLInputElement;
@@ -12,8 +14,9 @@
 			await createProject(name);
 			sessionActive.set(true);
 			projectInfo.set({ name, has_design: false, has_results: false, factors_count: 0, design_runs: null });
+			currentFactors.set(null);
+			designResult.set(null);
 			showToast('New project created', 'success');
-			window.location.reload();
 		}
 	}
 
@@ -37,11 +40,18 @@
 		try {
 			const info = await loadProject(file);
 			projectInfo.set(info);
+			sessionActive.set(true);
+			// Refresh factors from the loaded project
+			try {
+				$currentFactors = await getFactors();
+			} catch {}
+			designResult.set(null);
 			showToast('Project loaded', 'success');
-			window.location.reload();
 		} catch (err: any) {
 			showToast(err.message, 'error');
 		}
+		// Reset file input so the same file can be loaded again
+		target.value = '';
 	}
 </script>
 

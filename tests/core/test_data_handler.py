@@ -332,3 +332,104 @@ class TestDataHandlerMultiResponse:
         assert len(clean_data) == 2  # Rows 0 and 3
         assert not clean_data['Response1'].isna().any()
         assert not clean_data['Response2'].isna().any()
+
+
+class TestDataHandlerRealTemplates:
+    """Test DataHandler against real SCOUT-exported Excel templates"""
+
+    def test_load_ff_template(self, real_ff_template):
+        """Test loading a real full-factorial design template"""
+        handler = DataHandler()
+        handler.load_excel(str(real_ff_template))
+
+        assert handler.data is not None
+        assert len(handler.data) > 0
+
+        # Real templates have 'Sample Tracking' as first sheet
+        expected_cols = [
+            'ID', 'Plate_96', 'Well_96', 'Well_384', 'Source', 'Batch',
+            'Buffer pH', 'Buffer Conc (mM)', 'NaCl (mM)', 'Glycerol (%)',
+            'Detergent', 'Reducing Agent', 'Reducing Agent (mM)', 'Response',
+        ]
+        for col in expected_cols:
+            assert col in handler.data.columns, f"Missing column '{col}'"
+
+        # Stock concentrations should load from Stock_Concentrations sheet
+        stocks = handler.get_stock_concentrations()
+        assert len(stocks) > 0, "No stock concentrations loaded"
+        # Real templates have at least NaCl, Glycerol, Buffer Conc, Reducing Agent
+        assert 'nacl' in stocks, f"Missing 'nacl'. Got: {list(stocks.keys())}"
+        assert 'glycerol' in stocks, f"Missing 'glycerol'. Got: {list(stocks.keys())}"
+
+    def test_load_lhs_template(self, real_lhs_template):
+        """Test loading a real LHS design template"""
+        handler = DataHandler()
+        handler.load_excel(str(real_lhs_template))
+
+        assert handler.data is not None
+        assert len(handler.data) > 0
+
+        stocks = handler.get_stock_concentrations()
+        assert len(stocks) > 0
+
+    def test_ff_template_full_workflow(self, real_ff_template):
+        """Test full analysis workflow with real FF template"""
+        handler = DataHandler()
+        handler.load_excel(str(real_ff_template))
+
+        # Detect columns with Response as the target
+        handler.detect_columns('Response')
+
+        assert handler.response_column == 'Response'
+        assert len(handler.factor_columns) > 0
+
+        # Metadata columns should be excluded from factors
+        for meta in ['ID', 'Plate_96', 'Well_96', 'Well_384', 'Source', 'Batch']:
+            assert meta not in handler.factor_columns, f"'{meta}' should not be a factor"
+
+        # Known factors should be detected
+        factor_names = handler.factor_columns
+        assert 'NaCl (mM)' in factor_names or any('NaCl' in f for f in factor_names)
+
+        # Categorical factors should include Detergent
+        assert any('Detergent' in f for f in handler.categorical_factors), \
+            f"Detergent not in categorical: {handler.categorical_factors}"
+
+        # Preprocess should work
+        clean_data = handler.preprocess_data()
+        assert len(clean_data) > 0
+
+    def test_ff_template_per_level_concs(self, real_ff_template):
+        """Test that per-level concentrations load correctly from real template"""
+        handler = DataHandler()
+        handler.load_excel(str(real_ff_template))
+
+        per_level = handler.get_per_level_concs()
+        # Real templates have per-level detergent concentrations
+        if per_level:
+            assert 'detergent' in per_level, f"Expected detergent per-level. Got: {list(per_level.keys())}"
+            det_levels = per_level['detergent']
+            # Should have entries like C12E8, CHAPS, DDM etc.
+            assert len(det_levels) > 0, "No detergent levels found"
+            for level_name, concs in det_levels.items():
+                assert 'stock' in concs, f"Missing 'stock' for {level_name}"
+                assert 'final' in concs, f"Missing 'final' for {level_name}"
+
+    def test_stock_concs_fixture_matches_real_format(self, temp_excel_with_stock_concs):
+        """Verify test fixture stock concs match real template format"""
+        handler = DataHandler()
+        handler.load_excel(str(temp_excel_with_stock_concs))
+
+        stocks = handler.get_stock_concentrations()
+        assert 'nacl' in stocks, f"Missing nacl. Got: {list(stocks.keys())}"
+        assert 'glycerol' in stocks, f"Missing glycerol. Got: {list(stocks.keys())}"
+        assert 'buffer_concentration' in stocks, f"Missing buffer_concentration. Got: {list(stocks.keys())}"
+        assert stocks['nacl'] == 2000
+        assert stocks['glycerol'] == 50
+
+        # Per-level detergent concentrations
+        per_level = handler.get_per_level_concs()
+        assert 'detergent' in per_level, f"Missing detergent per-level. Got: {list(per_level.keys())}"
+        assert 'C12E8' in per_level['detergent']
+        assert per_level['detergent']['C12E8']['stock'] == 0.05
+        assert per_level['detergent']['C12E8']['final'] == 0.00336

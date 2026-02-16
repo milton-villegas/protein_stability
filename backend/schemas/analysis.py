@@ -35,6 +35,13 @@ class OptimizeResponse(BaseModel):
     has_pareto: bool = False
 
 
+class BOExportRequest(BaseModel):
+    final_volume: float = 100.0
+    batch_number: int = 1
+    protein_stock: Optional[float] = None
+    protein_final: Optional[float] = None
+
+
 class UploadResponse(BaseModel):
     columns: List[str]
     potential_responses: List[str]

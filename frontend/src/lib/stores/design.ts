@@ -6,6 +6,6 @@ export const designTypes = writable<DesignTypes | null>(null);
 export const currentFactors = writable<FactorsResponse | null>(null);
 export const designResult = writable<DesignGenerateResponse | null>(null);
 export const selectedDesignType = writable('full_factorial');
-export const finalVolume = writable(200);
+export const finalVolume = writable(100);
 export const proteinStock = writable<number | null>(null);
 export const proteinFinal = writable<number | null>(null);

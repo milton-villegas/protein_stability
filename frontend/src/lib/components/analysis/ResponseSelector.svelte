@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { uploadData, responseConfigs } from '$lib/stores/analysis';
+	import { uploadData, responseConfigs, useBayesian } from '$lib/stores/analysis';
 	import type { ResponseConfig } from '$lib/types';
 
 	function toggleResponse(name: string) {
@@ -16,6 +16,19 @@
 			r.name === name ? { ...r, direction: dir } : r
 		);
 	}
+
+	function updateConstraint(name: string, field: 'min' | 'max', value: string) {
+		$responseConfigs = $responseConfigs.map((r) => {
+			if (r.name !== name) return r;
+			const updated = { ...r };
+			if (value === '') {
+				delete updated[field];
+			} else {
+				updated[field] = parseFloat(value);
+			}
+			return updated;
+		});
+	}
 </script>
 
 {#if $uploadData && $uploadData.potential_responses.length > 0}
@@ -27,7 +40,7 @@
 			<div class="flex flex-col gap-2 mt-2">
 				{#each $uploadData.potential_responses as col}
 					{@const config = $responseConfigs.find((r) => r.name === col)}
-					<div class="flex items-center gap-3 p-2 rounded bg-base-100">
+					<div class="flex items-center gap-3 p-2 rounded bg-base-100 flex-wrap">
 						<input
 							type="checkbox"
 							class="checkbox checkbox-sm checkbox-primary"
@@ -44,6 +57,22 @@
 								<option value="maximize">Maximize</option>
 								<option value="minimize">Minimize</option>
 							</select>
+							{#if $useBayesian}
+								<input
+									type="number"
+									class="input input-xs input-bordered w-20"
+									placeholder="Min"
+									value={config.min ?? ''}
+									onchange={(e) => updateConstraint(col, 'min', (e.target as HTMLInputElement).value)}
+								/>
+								<input
+									type="number"
+									class="input input-xs input-bordered w-20"
+									placeholder="Max"
+									value={config.max ?? ''}
+									onchange={(e) => updateConstraint(col, 'max', (e.target as HTMLInputElement).value)}
+								/>
+							{/if}
 						{/if}
 					</div>
 				{/each}

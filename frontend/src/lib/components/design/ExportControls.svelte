@@ -2,7 +2,6 @@
 	import { finalVolume, proteinStock, proteinFinal, currentFactors, designResult, selectedDesignType } from '$lib/stores/design';
 	import { buildFactorial, generateDesign, exportExcel, exportCsv } from '$lib/api/design';
 	import { showToast } from '$lib/stores/ui';
-	import DataTable from '$lib/components/shared/DataTable.svelte';
 
 	interface Props {
 		designParams: Record<string, any>;
@@ -62,50 +61,35 @@
 	<div class="card-body p-4">
 		<h3 class="card-title text-sm">Settings & Export</h3>
 
-		<div class="grid grid-cols-2 gap-3">
+		<div class="flex flex-wrap gap-3 items-end">
 			<div class="form-control">
-				<label class="label"><span class="label-text text-xs">Final Volume (uL)</span></label>
-				<input type="number" class="input input-sm input-bordered" bind:value={$finalVolume} min="1" max="323" />
+				<label class="label py-0"><span class="label-text text-xs">Final Volume (uL)</span></label>
+				<input type="number" class="input input-sm input-bordered w-28" bind:value={$finalVolume} min="1" max="323" />
 			</div>
 			<div class="form-control">
-				<label class="label"><span class="label-text text-xs">Protein Stock (mg/mL)</span></label>
-				<input type="number" class="input input-sm input-bordered" bind:value={$proteinStock} step="any" placeholder="Optional" />
+				<label class="label py-0"><span class="label-text text-xs">Protein Stock (mg/mL)</span></label>
+				<input type="number" class="input input-sm input-bordered w-32" bind:value={$proteinStock} step="any" placeholder="Optional" />
 			</div>
 			<div class="form-control">
-				<label class="label"><span class="label-text text-xs">Final Protein (mg/mL)</span></label>
-				<input type="number" class="input input-sm input-bordered" bind:value={$proteinFinal} step="any" placeholder="Optional" />
+				<label class="label py-0"><span class="label-text text-xs">Final Protein (mg/mL)</span></label>
+				<input type="number" class="input input-sm input-bordered w-32" bind:value={$proteinFinal} step="any" placeholder="Optional" />
 			</div>
-		</div>
 
-		<div class="flex gap-2 mt-3">
-			<button class="btn btn-sm btn-primary flex-1" onclick={handleGenerate} disabled={!hasFactors || generating}>
+			<button class="btn btn-sm btn-primary" onclick={handleGenerate} disabled={!hasFactors || generating}>
 				{#if generating}
 					<span class="loading loading-spinner loading-xs"></span>
 				{/if}
-				Generate Design
+				Generate
 			</button>
-		</div>
 
-		{#if $designResult}
-			<div class="flex gap-2 mt-2">
-				<button class="btn btn-sm btn-outline flex-1" onclick={handleExportExcel} disabled={exporting}>
+			{#if $designResult}
+				<button class="btn btn-sm btn-outline" onclick={handleExportExcel} disabled={exporting}>
 					Export Excel
 				</button>
-				<button class="btn btn-sm btn-outline flex-1" onclick={handleExportCsv} disabled={exporting}>
-					Export CSV (Opentrons)
+				<button class="btn btn-sm btn-outline" onclick={handleExportCsv} disabled={exporting}>
+					Export CSV
 				</button>
-			</div>
-
-			<div class="mt-3">
-				<div class="flex gap-2 mb-2">
-					<span class="badge badge-primary">{$designResult.total_runs} runs</span>
-					<span class="badge badge-secondary">{$designResult.plates_required} plate(s)</span>
-					{#each $designResult.warnings as w}
-						<span class="badge badge-warning text-xs">{w}</span>
-					{/each}
-				</div>
-				<DataTable data={$designResult.design_points} maxRows={50} />
-			</div>
-		{/if}
+			{/if}
+		</div>
 	</div>
 </div>

@@ -1,6 +1,11 @@
 """Design routes - factor CRUD, design generation, export"""
 
+import logging
+import traceback
+
 from fastapi import APIRouter, Depends, HTTPException, Response
+
+logger = logging.getLogger(__name__)
 
 from backend.dependencies import get_current_session
 from backend.schemas.factors import (
@@ -118,9 +123,18 @@ async def generate_design(
     if not factors:
         raise HTTPException(400, "No factors defined")
 
+    stock_concs = project.get_all_stock_concs()
+
+    # Store protein params in session
+    if body.protein_stock is not None:
+        session["protein_stock"] = body.protein_stock
+    if body.protein_final is not None:
+        session["protein_final"] = body.protein_final
+
     try:
         design_points, warnings = design_service.generate_design(
-            factory, body.design_type, factors, body.params
+            factory, body.design_type, factors, body.params,
+            stock_concs=stock_concs, final_volume=body.final_volume,
         )
 
         total_runs = len(design_points)
@@ -150,10 +164,21 @@ async def build_factorial(
     if not factors:
         raise HTTPException(400, "No factors defined")
 
+    # Store protein params in session for volume calculations
+    if body.protein_stock is not None:
+        session["protein_stock"] = body.protein_stock
+    if body.protein_final is not None:
+        session["protein_final"] = body.protein_final
+
     try:
+        logger.info(f"[BUILD-FACTORIAL] factors={list(factors.keys())}, stock_concs={stock_concs}, "
+                     f"final_volume={body.final_volume}, protein_stock={body.protein_stock}, protein_final={body.protein_final}")
         excel_data, volume_data, warnings = design_service.build_factorial_design(
             designer, factors, stock_concs, body.final_volume,
+            protein_stock=body.protein_stock,
+            protein_final=body.protein_final,
         )
+        logger.info(f"[BUILD-FACTORIAL] Success: {len(excel_data)} runs")
         return {
             "excel_data": excel_data,
             "volume_data": volume_data,
@@ -162,6 +187,7 @@ async def build_factorial(
             "plates_required": design_service.get_plates_required(len(excel_data)),
         }
     except Exception as e:
+        logger.error(f"[BUILD-FACTORIAL] ERROR: {e}\n{traceback.format_exc()}")
         raise HTTPException(400, str(e))
 
 
@@ -179,13 +205,25 @@ async def export_excel(
     if not factors:
         raise HTTPException(400, "No factors defined")
 
+    per_level_concs = project.get_all_per_level_concs()
+
     try:
         excel_df, volume_df = designer.build_factorial_design(
             factors, stock_concs, body.final_volume
         )
 
+        # Add Source and Batch columns if missing (matching original format)
+        if "Source" not in excel_df.columns:
+            resp_col_idx = list(excel_df.columns).index("Response") if "Response" in excel_df.columns else len(excel_df.columns)
+            excel_df.insert(resp_col_idx, "Batch", 0)
+            excel_df.insert(resp_col_idx, "Source", "FULL_FACTORIAL")
+
         excel_bytes = export_service.generate_excel_bytes(
-            excel_df, volume_df, stock_concs, project.name
+            excel_df, volume_df, stock_concs, project.name,
+            per_level_concs=per_level_concs,
+            protein_stock=body.protein_stock,
+            protein_final=body.protein_final,
+            final_volume=body.final_volume,
         )
 
         filename = f"{project.name}_Design.xlsx"

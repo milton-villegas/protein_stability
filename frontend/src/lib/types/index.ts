@@ -9,6 +9,7 @@ export interface FactorsResponse {
 export interface AvailableFactors {
 	factors: Record<string, string>;
 	categorical_factors: string[];
+	factor_categories?: { name: string; factors: string[] }[];
 }
 
 export interface DesignTypes {

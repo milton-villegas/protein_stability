@@ -15,12 +15,23 @@ from config.design_config import (
 router = APIRouter()
 
 
+FACTOR_CATEGORIES = [
+    {"name": "Buffer System", "factors": ["buffer pH", "buffer_concentration"]},
+    {"name": "Detergents", "factors": ["detergent", "detergent_concentration"]},
+    {"name": "Reducing Agents", "factors": ["reducing_agent", "reducing_agent_concentration"]},
+    {"name": "Salts", "factors": ["nacl", "kcl"]},
+    {"name": "Metals", "factors": ["zinc", "magnesium", "calcium"]},
+    {"name": "Additives", "factors": ["glycerol", "dmso"]},
+]
+
+
 @router.get("/factors")
 async def get_available_factors():
     """Get all available factors with display names"""
     return {
         "factors": AVAILABLE_FACTORS,
         "categorical_factors": list(CATEGORICAL_FACTORS),
+        "factor_categories": FACTOR_CATEGORIES,
     }
 
 

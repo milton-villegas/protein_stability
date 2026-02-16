@@ -245,7 +245,7 @@ class TestDoEDesignerBufferPH:
         )
 
         # Check buffer pH column in volume_df
-        assert 'buffer 7.0' in volume_df.columns
+        assert 'buffer_7.0' in volume_df.columns
         assert 'nacl' in volume_df.columns
         assert 'water' in volume_df.columns
 
@@ -266,9 +266,9 @@ class TestDoEDesignerBufferPH:
         )
 
         # Check all buffer pH columns exist
-        assert 'buffer 6.0' in volume_df.columns
-        assert 'buffer 7.0' in volume_df.columns
-        assert 'buffer 8.0' in volume_df.columns
+        assert 'buffer_6.0' in volume_df.columns
+        assert 'buffer_7.0' in volume_df.columns
+        assert 'buffer_8.0' in volume_df.columns
 
         # 2 * 3 = 6 combinations
         assert len(excel_df) == 6
@@ -288,7 +288,7 @@ class TestDoEDesignerBufferPH:
 
         # Buffer columns should be sorted
         buffer_cols = [col for col in volume_df.columns if col.startswith('buffer')]
-        assert buffer_cols == ['buffer 6.0', 'buffer 7.0', 'buffer 8.0']
+        assert buffer_cols == ['buffer_6.0', 'buffer_7.0', 'buffer_8.0']
 
 
 class TestDoEDesignerVolumeCalculations:

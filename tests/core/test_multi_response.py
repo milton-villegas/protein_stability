@@ -140,13 +140,13 @@ class TestMultiResponseDoE:
         assert len(main_effects_tm) > 0
         assert len(main_effects_agg) > 0
 
-        # Tm should be positively affected by Glycerol (designed that way)
+        # Tm should have main effects for Glycerol (designed that way)
         if 'Glycerol (%)' in main_effects_tm:
-            assert 'effect' in main_effects_tm['Glycerol (%)']
+            assert 'Mean Response' in main_effects_tm['Glycerol (%)'].columns
 
-        # Aggregation should be negatively affected by pH (designed that way)
+        # Aggregation should have main effects for pH (designed that way)
         if 'Buffer pH' in main_effects_agg:
-            assert 'effect' in main_effects_agg['Buffer pH']
+            assert 'Mean Response' in main_effects_agg['Buffer pH'].columns
 
     def test_single_response_backward_compatibility(self, multi_response_data):
         """Test that single response still works (backward compatibility)"""

@@ -43,40 +43,94 @@ def temp_excel_file(sample_doe_data, tmp_path):
 
 
 @pytest.fixture
-def temp_excel_with_stock_concs(sample_doe_data, tmp_path):
-    """Create temporary Excel file with stock concentrations metadata"""
+def temp_excel_with_stock_concs(tmp_path):
+    """Create temporary Excel file matching real SCOUT export format.
+
+    Matches the structure of actual design files:
+    - 'Sample Tracking' sheet with ID, Plate_96, Well_96, Well_384, Source, Batch, factors, Response
+    - 'Stock_Concentrations' sheet with Factor Name, Level, Stock Value, Final Value, Unit
+      including per-level entries for categorical factors (e.g. Detergent)
+    """
     filepath = tmp_path / "test_data_with_stocks.xlsx"
 
-    # Create workbook with data sheet
     wb = openpyxl.Workbook()
+
+    # --- Sample Tracking sheet (main data) ---
     ws = wb.active
-    ws.title = "Sheet1"
+    ws.title = "Sample Tracking"
 
-    # Write data
-    for r_idx, row in enumerate([sample_doe_data.columns.tolist()] + sample_doe_data.values.tolist(), 1):
-        for c_idx, value in enumerate(row, 1):
-            ws.cell(row=r_idx, column=c_idx, value=value)
+    headers = [
+        "ID", "Plate_96", "Well_96", "Well_384", "Source", "Batch",
+        "Buffer pH", "Buffer Conc (mM)", "NaCl (mM)", "Glycerol (%)",
+        "Detergent", "Reducing Agent", "Reducing Agent (mM)", "Response",
+    ]
+    for c, h in enumerate(headers, 1):
+        ws.cell(row=1, column=c, value=h)
 
-    # Create stock concentrations sheet
-    stock_sheet = wb.create_sheet(title="Stock_Concentrations")
-    stock_headers = ["Factor Name", "Stock Value", "Unit"]
+    rows = [
+        [1, 1, "A1", "A1", "FULL_FACTORIAL", 0, 6.5, 10, 100, 0, "C12E8", "TCEP", 0, 36.0],
+        [2, 1, "B1", "C1", "FULL_FACTORIAL", 0, 6.5, 10, 100, 0, "C12E8", "TCEP", 0.5, 36.4],
+        [3, 1, "C1", "E1", "FULL_FACTORIAL", 0, 6.5, 10, 100, 0, "CHAPS", "TCEP", 0, 32.4],
+        [4, 1, "D1", "G1", "FULL_FACTORIAL", 0, 6.5, 10, 100, 0, "CHAPS", "TCEP", 0.5, 32.0],
+        [5, 1, "E1", "I1", "FULL_FACTORIAL", 0, 7.5, 10, 500, 15, "DDM", "TCEP", 0, 40.1],
+        [6, 1, "F1", "K1", "FULL_FACTORIAL", 0, 7.5, 10, 500, 15, "DDM", "TCEP", 0.5, 41.3],
+        [7, 1, "G1", "M1", "FULL_FACTORIAL", 0, 8.5, 50, 100, 0, "C12E8", "TCEP", 0, 38.2],
+        [8, 1, "H1", "O1", "FULL_FACTORIAL", 0, 8.5, 50, 500, 15, "CHAPS", "TCEP", 0.5, 44.5],
+    ]
+    for r_idx, row in enumerate(rows, 2):
+        for c_idx, val in enumerate(row, 1):
+            ws.cell(row=r_idx, column=c_idx, value=val)
 
-    for col_idx, header in enumerate(stock_headers, start=1):
-        cell = stock_sheet.cell(row=1, column=col_idx, value=header)
+    # --- Stock_Concentrations sheet ---
+    stock_ws = wb.create_sheet(title="Stock_Concentrations")
+    stock_headers = ["Factor Name", "Level", "Stock Value", "Final Value", "Unit"]
+    for c, h in enumerate(stock_headers, 1):
+        cell = stock_ws.cell(row=1, column=c, value=h)
         cell.font = Font(bold=True)
 
-    # Add stock concentration data
-    stock_data = [
-        ["NaCl (mM)", 1000, "mM"],
-        ["Buffer pH", 14, "pH"]
+    # Normal factors (Level is empty)
+    # Per-level factors (Level is filled, e.g. detergent types)
+    stock_rows = [
+        # [Factor Name, Level, Stock Value, Final Value, Unit]
+        ["Buffer Conc (mM)", None, 100, None, "mM"],
+        ["NaCl (mM)", None, 2000, None, "mM"],
+        ["Glycerol (%)", None, 50, None, "%"],
+        ["Reducing Agent (mM)", None, 5, None, "mM"],
+        # Per-level detergent concentrations
+        ["Detergent (%)", "C12E8", 0.05, 0.00336, "%"],
+        ["Detergent (%)", "CHAPS", 5, 0.34, "%"],
+        ["Detergent (%)", "DDM", 0.1, 0.00609, "%"],
+        # Separator / empty row
+        [None, None, None, None, None],
+        # Protein (informational, skipped by loader)
+        ["Protein (added manually)", None, 29.75, 0.5, "mg/mL"],
     ]
 
-    for row_idx, row_data in enumerate(stock_data, start=2):
-        for col_idx, value in enumerate(row_data, start=1):
-            stock_sheet.cell(row=row_idx, column=col_idx, value=value)
+    for r_idx, row in enumerate(stock_rows, 2):
+        for c_idx, val in enumerate(row, 1):
+            if val is not None:
+                stock_ws.cell(row=r_idx, column=c_idx, value=val)
 
     wb.save(filepath)
     return filepath
+
+
+@pytest.fixture
+def real_ff_template():
+    """Path to real FF design template (if available in examples/)"""
+    path = Path(__file__).parent.parent / "examples" / "FF_Design_Template.xlsx"
+    if path.exists():
+        return path
+    pytest.skip("FF_Design_Template.xlsx not found in examples/")
+
+
+@pytest.fixture
+def real_lhs_template():
+    """Path to real LHS design template (if available in examples/)"""
+    path = Path(__file__).parent.parent / "examples" / "LHS_Design_Template.xlsx"
+    if path.exists():
+        return path
+    pytest.skip("LHS_Design_Template.xlsx not found in examples/")
 
 
 @pytest.fixture

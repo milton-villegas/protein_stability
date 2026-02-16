@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { availableFactors } from '$lib/stores/design';
+	import { getConstraints } from '$lib/api/config';
+	import { onMount } from 'svelte';
 
 	interface Props {
 		open: boolean;
@@ -28,10 +30,32 @@
 	let seqFrom = $state('');
 	let seqTo = $state('');
 	let seqStep = $state('');
+	let validationError = $state('');
+	let constraints: Record<string, any> = $state({});
 
 	let isCategorical = $derived(
 		$availableFactors?.categorical_factors.includes(name) ?? false
 	);
+
+	let stockWarning = $derived(() => {
+		if (isCategorical || !stockConc) return '';
+		const sc = parseFloat(stockConc);
+		if (isNaN(sc)) return '';
+		for (const lv of levels) {
+			const num = parseFloat(lv);
+			if (!isNaN(num) && num > sc) {
+				return `Level ${lv} exceeds stock concentration (${stockConc})`;
+			}
+		}
+		return '';
+	});
+
+	onMount(async () => {
+		try {
+			const data = await getConstraints();
+			constraints = data.constraints ?? {};
+		} catch {}
+	});
 
 	// Reset form when dialog opens
 	$effect(() => {
@@ -40,15 +64,47 @@
 			levels = [...initialLevels];
 			stockConc = initialStockConc?.toString() ?? '';
 			newLevel = '';
+			validationError = '';
 		}
 	});
 
+	function validateLevel(val: string, factorKey: string): string | null {
+		if (isCategorical) return null; // No numeric validation for categorical
+
+		const num = parseFloat(val);
+		if (isNaN(num)) return null; // Non-numeric levels accepted (could be categorical)
+
+		const constraint = constraints[factorKey];
+		if (!constraint) return null;
+
+		if (constraint.min !== undefined && num < constraint.min) {
+			return `${val} is below minimum (${constraint.min}). ${constraint.description ?? ''}`;
+		}
+		if (constraint.max !== undefined && num > constraint.max) {
+			return `${val} exceeds maximum (${constraint.max}). ${constraint.description ?? ''}`;
+		}
+		return null;
+	}
+
 	function addLevel() {
 		const val = newLevel.trim();
-		if (val && !levels.includes(val)) {
-			levels = [...levels, val];
-			newLevel = '';
+		if (!val) return;
+
+		// Support comma-separated values
+		const values = val.includes(',') ? val.split(',').map(v => v.trim()).filter(Boolean) : [val];
+
+		for (const v of values) {
+			const error = validateLevel(v, name);
+			if (error) {
+				validationError = error;
+				return;
+			}
+			if (!levels.includes(v)) {
+				levels = [...levels, v];
+			}
 		}
+		validationError = '';
+		newLevel = '';
 	}
 
 	function removeLevel(idx: number) {
@@ -61,12 +117,26 @@
 		const step = parseFloat(seqStep);
 		if (isNaN(from) || isNaN(to) || isNaN(step) || step <= 0) return;
 
+		// Validate range
+		const constraint = constraints[name];
+		if (constraint) {
+			if (constraint.min !== undefined && from < constraint.min) {
+				validationError = `From value ${from} is below minimum (${constraint.min})`;
+				return;
+			}
+			if (constraint.max !== undefined && to > constraint.max) {
+				validationError = `To value ${to} exceeds maximum (${constraint.max})`;
+				return;
+			}
+		}
+
 		const newLevels: string[] = [];
 		for (let v = from; v <= to + step / 100; v += step) {
 			const rounded = Math.round(v * 1000) / 1000;
 			newLevels.push(rounded.toString());
 		}
 		levels = newLevels;
+		validationError = '';
 		seqFrom = '';
 		seqTo = '';
 		seqStep = '';
@@ -102,7 +172,14 @@
 				<div class="form-control mb-3">
 					<label class="label"><span class="label-text text-sm">Stock Concentration</span></label>
 					<input type="number" class="input input-sm input-bordered" bind:value={stockConc} placeholder="e.g., 5000" step="any" />
+					{#if stockWarning()}
+						<label class="label"><span class="label-text-alt text-warning text-xs">{stockWarning()}</span></label>
+					{/if}
 				</div>
+			{/if}
+
+			{#if constraints[name]}
+				<p class="text-xs opacity-60 mb-2">Range: {constraints[name].description}</p>
 			{/if}
 
 			<div class="form-control mb-3">
@@ -112,11 +189,14 @@
 						type="text"
 						class="input input-sm input-bordered flex-1"
 						bind:value={newLevel}
-						placeholder={isCategorical ? 'e.g., Tween-20' : 'e.g., 100'}
+						placeholder={isCategorical ? 'e.g., Tween-20' : 'e.g., 100 or 50,100,200'}
 						onkeydown={handleKeydown}
 					/>
 					<button class="btn btn-sm btn-primary" onclick={addLevel}>Add</button>
 				</div>
+				{#if validationError}
+					<label class="label"><span class="label-text-alt text-error text-xs">{validationError}</span></label>
+				{/if}
 			</div>
 
 			{#if levels.length > 0}

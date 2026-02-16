@@ -1,12 +1,20 @@
 <script lang="ts">
-	import { responseConfigs, selectedModelType, useBayesian, analysisResults, plots, modelComparison, suggestions } from '$lib/stores/analysis';
-	import { configureAnalysis, runAnalysis, compareModels, getPlot, runOptimization } from '$lib/api/analysis';
+	import { responseConfigs, selectedModelType, useBayesian, analysisResults, plots, modelComparison, suggestions, analysisSummary, hasPareto, paretoPoints } from '$lib/stores/analysis';
+	import { configureAnalysis, runAnalysis, compareModels, getPlot, runOptimization, getAnalysisSummary, exportResults, exportBOBatch, exportBOCsv, getParetoFrontier } from '$lib/api/analysis';
 	import { showToast } from '$lib/stores/ui';
 	import PlotImage from '$lib/components/shared/PlotImage.svelte';
 	import DataTable from '$lib/components/shared/DataTable.svelte';
+	import ResultsDetail from '$lib/components/analysis/ResultsDetail.svelte';
 
 	let running = $state(false);
+	let exporting = $state(false);
 	let activeTab = $state('results');
+	let selectedPlotResponse = $state('');
+	let loadingPlots = $state(false);
+	let nSuggestions = $state(5);
+	let batchNumber = $state(1);
+	let boFinalVolume = $state(100);
+	let boPlots = $state<Record<string, string>>({});
 
 	const MODEL_TYPES = [
 		{ value: 'linear', label: 'Linear (main effects)' },
@@ -16,6 +24,25 @@
 		{ value: 'reduced', label: 'Reduced (backward elimination)' },
 		{ value: 'mean', label: 'Mean (intercept only)' },
 	];
+
+	const PLOT_TYPES = ['main-effects', 'interactions', 'residuals', 'predictions'];
+
+	async function loadPlots(response?: string) {
+		loadingPlots = true;
+		$plots = {};
+		for (const plotType of PLOT_TYPES) {
+			try {
+				const p = await getPlot(plotType, response);
+				$plots = { ...$plots, [plotType]: p.image };
+			} catch {}
+		}
+		loadingPlots = false;
+	}
+
+	async function handlePlotResponseChange(newResponse: string) {
+		selectedPlotResponse = newResponse;
+		await loadPlots(newResponse || undefined);
+	}
 
 	async function handleRun() {
 		if ($responseConfigs.length === 0) {
@@ -27,39 +54,80 @@
 		try {
 			// 1. Configure
 			const dirs: Record<string, string> = {};
-			$responseConfigs.forEach((r) => (dirs[r.name] = r.direction));
+			const cons: Record<string, Record<string, number>> = {};
+			$responseConfigs.forEach((r) => {
+				dirs[r.name] = r.direction;
+				const c: Record<string, number> = {};
+				if (r.min != null) c.min = r.min;
+				if (r.max != null) c.max = r.max;
+				if (Object.keys(c).length > 0) cons[r.name] = c;
+			});
 
 			await configureAnalysis(
 				$responseConfigs.map((r) => r.name),
 				dirs,
+				Object.keys(cons).length > 0 ? cons : undefined,
 			);
 
 			// 2. Run analysis
 			const result = await runAnalysis($selectedModelType);
 			$analysisResults = result.results;
 
-			// 3. Load plots
-			$plots = {};
-			for (const plotType of ['main-effects', 'interactions', 'residuals', 'predictions']) {
-				try {
-					const p = await getPlot(plotType);
-					$plots = { ...$plots, [plotType]: p.image };
-				} catch {}
-			}
+			// 3. Load plots (for first response)
+			selectedPlotResponse = '';
+			await loadPlots();
 
 			// 4. Compare models
 			try {
 				$modelComparison = await compareModels();
 			} catch {}
 
-			// 5. Bayesian optimization
+			// 5. Get analysis summary
+			try {
+				$analysisSummary = await getAnalysisSummary();
+			} catch {}
+
+			// 6. Bayesian optimization
+			$suggestions = null;
+			$hasPareto = false;
+			$paretoPoints = null;
+			boPlots = {};
 			if ($useBayesian) {
 				try {
 					const opt = await runOptimization(
 						$responseConfigs.map((r) => r.name),
 						dirs,
+						Object.keys(cons).length > 0 ? cons : undefined,
+						nSuggestions,
 					);
 					$suggestions = opt.suggestions;
+					$hasPareto = opt.has_pareto ?? false;
+
+					// Fetch Pareto frontier if available
+					if ($hasPareto) {
+						try {
+							const pareto = await getParetoFrontier();
+							$paretoPoints = pareto.pareto_points;
+						} catch {}
+					}
+
+					// Fetch BO-specific plots
+					const isMultiObjective = $responseConfigs.length > 1;
+					if (isMultiObjective) {
+						try {
+							const p = await getPlot('bo-pareto');
+							boPlots = { ...boPlots, 'bo-pareto': p.image };
+						} catch {}
+						try {
+							const p = await getPlot('bo-parallel');
+							boPlots = { ...boPlots, 'bo-parallel': p.image };
+						} catch {}
+					} else {
+						try {
+							const p = await getPlot('bo-response-surface');
+							boPlots = { ...boPlots, 'bo-response-surface': p.image };
+						} catch {}
+					}
 				} catch (e: any) {
 					showToast(`Optimization: ${e.message}`, 'error');
 				}
@@ -73,8 +141,45 @@
 		running = false;
 	}
 
+	async function handleExportResults() {
+		exporting = true;
+		try {
+			await exportResults();
+			showToast('Results exported', 'success');
+		} catch (e: any) {
+			showToast(`Export failed: ${e.message}`, 'error');
+		}
+		exporting = false;
+	}
+
+	async function handleExportBO() {
+		exporting = true;
+		try {
+			await exportBOBatch(boFinalVolume, batchNumber);
+			showToast('BO batch exported (Excel)', 'success');
+		} catch (e: any) {
+			showToast(`Export failed: ${e.message}`, 'error');
+		}
+		exporting = false;
+	}
+
+	async function handleExportBOCsv() {
+		exporting = true;
+		try {
+			await exportBOCsv(boFinalVolume, batchNumber);
+			showToast('BO batch exported (CSV)', 'success');
+		} catch (e: any) {
+			showToast(`Export failed: ${e.message}`, 'error');
+		}
+		exporting = false;
+	}
+
 	let resultEntries = $derived(
 		$analysisResults ? Object.entries($analysisResults) : []
+	);
+
+	let isPlotTab = $derived(
+		['main-effects', 'interactions', 'residuals', 'predictions'].includes(activeTab)
 	);
 </script>
 
@@ -97,12 +202,30 @@
 				<span class="label-text text-xs">Bayesian Optimization</span>
 			</label>
 
+			{#if $useBayesian}
+				<div class="form-control">
+					<label class="label"><span class="label-text text-xs">Suggestions</span></label>
+					<input type="number" class="input input-sm input-bordered w-20" min="1" max="20" bind:value={nSuggestions} />
+				</div>
+			{/if}
+
 			<button class="btn btn-sm btn-primary" onclick={handleRun} disabled={running || $responseConfigs.length === 0}>
 				{#if running}
 					<span class="loading loading-spinner loading-xs"></span>
 				{/if}
 				Run Analysis
 			</button>
+
+			{#if $analysisResults}
+				<button class="btn btn-sm btn-outline" onclick={handleExportResults} disabled={exporting}>
+					Export Statistics
+				</button>
+			{/if}
+			{#if $suggestions}
+				<button class="btn btn-sm btn-outline" onclick={handleExportBO} disabled={exporting}>
+					Export BO Batch
+				</button>
+			{/if}
 		</div>
 	</div>
 </div>
@@ -121,15 +244,45 @@
 			{#if $suggestions}
 				<button role="tab" class="tab" class:tab-active={activeTab === 'suggestions'} onclick={() => activeTab = 'suggestions'}>Suggestions</button>
 			{/if}
+			{#if $suggestions && Object.keys(boPlots).length > 0}
+				<button role="tab" class="tab" class:tab-active={activeTab === 'bo-plots'} onclick={() => activeTab = 'bo-plots'}>BO Plots</button>
+			{/if}
 		</div>
+
+		<!-- Response selector for plot tabs (multi-response) -->
+		{#if isPlotTab && resultEntries.length > 1}
+			<div class="flex items-center gap-2 mt-2">
+				<span class="text-xs opacity-60">Response:</span>
+				<select
+					class="select select-xs select-bordered"
+					value={selectedPlotResponse}
+					onchange={(e) => handlePlotResponseChange((e.target as HTMLSelectElement).value)}
+				>
+					<option value="">All</option>
+					{#each resultEntries as [name]}
+						<option value={name}>{name}</option>
+					{/each}
+				</select>
+				{#if loadingPlots}
+					<span class="loading loading-spinner loading-xs"></span>
+				{/if}
+			</div>
+		{/if}
 
 		<div class="mt-3">
 			{#if activeTab === 'results'}
-				{#each resultEntries as [responseName, result]}
-					<div class="card bg-base-200 mb-3">
-						<div class="card-body p-4">
-							<h4 class="font-bold text-sm">{responseName}</h4>
+				<!-- Analysis Summary with explanations -->
+				{#if $analysisSummary}
+					<ResultsDetail summary={$analysisSummary} />
+				{/if}
 
+				<!-- Raw stats per response -->
+				{#each resultEntries as [responseName, result]}
+					<details class="collapse collapse-arrow bg-base-200 mb-3">
+						<summary class="collapse-title text-sm font-bold p-4 min-h-0">
+							{responseName} — Model Statistics
+						</summary>
+						<div class="collapse-content px-4 pb-4">
 							{#if result.model_stats}
 								<div class="stats stats-horizontal shadow text-xs">
 									<div class="stat p-2">
@@ -158,7 +311,7 @@
 								{/if}
 							{/if}
 						</div>
-					</div>
+					</details>
 				{/each}
 
 			{:else if activeTab === 'main-effects' && $plots['main-effects']}
@@ -177,13 +330,26 @@
 				<div class="card bg-base-200">
 					<div class="card-body p-4">
 						<h4 class="font-bold text-sm">Model Comparison</h4>
+						<p class="text-xs opacity-60">Selection criteria: Adjusted R² (60%), BIC (30%), Parsimony (10%). Higher Adj R² is better | Lower BIC is better | Simpler models preferred.</p>
 						{#each Object.entries($modelComparison.comparisons ?? {}) as [resp, models]}
 							<h5 class="text-xs font-bold mt-2">{resp}</h5>
-							{#if $modelComparison.recommendations?.[resp]}
-								<span class="badge badge-success badge-sm mb-1">Recommended: {$modelComparison.recommendations[resp]}</span>
+							{@const rec = $modelComparison.recommendations?.[resp]}
+							{#if rec}
+								<div class="mb-2">
+									<span class="badge badge-success badge-sm">Recommended: {typeof rec === 'string' ? rec : rec.best_model}</span>
+									{#if typeof rec === 'object' && rec.reason}
+										<p class="text-xs opacity-70 mt-1">{rec.reason}</p>
+									{/if}
+								</div>
 							{/if}
 							{#if typeof models === 'object' && models !== null}
 								<DataTable data={Object.entries(models as Record<string, any>).map(([name, data]: [string, any]) => ({ Model: name, ...data }))} maxRows={10} />
+							{/if}
+							{#if typeof rec === 'object' && rec.scores}
+								<details class="mt-2">
+									<summary class="text-xs cursor-pointer opacity-60">Model Scoring Details</summary>
+									<DataTable data={Object.entries(rec.scores as Record<string, any>).map(([name, data]: [string, any]) => ({ Model: name, ...data }))} maxRows={10} />
+								</details>
 							{/if}
 						{/each}
 					</div>
@@ -192,9 +358,57 @@
 			{:else if activeTab === 'suggestions' && $suggestions}
 				<div class="card bg-base-200">
 					<div class="card-body p-4">
-						<h4 class="font-bold text-sm">Next Experiment Suggestions (Bayesian Optimization)</h4>
+						<div class="flex items-center justify-between flex-wrap gap-2">
+							<h4 class="font-bold text-sm">Next Experiment Suggestions (Bayesian Optimization)</h4>
+							<div class="flex items-end gap-2 flex-wrap">
+								<div class="form-control">
+									<label class="label py-0"><span class="label-text text-xs">Batch #</span></label>
+									<input type="number" class="input input-xs input-bordered w-16" min="1" bind:value={batchNumber} />
+								</div>
+								<div class="form-control">
+									<label class="label py-0"><span class="label-text text-xs">Volume (µL)</span></label>
+									<input type="number" class="input input-xs input-bordered w-20" min="1" bind:value={boFinalVolume} />
+								</div>
+								<button class="btn btn-sm btn-outline" onclick={handleExportBO} disabled={exporting}>
+									Export Excel
+								</button>
+								<button class="btn btn-sm btn-outline" onclick={handleExportBOCsv} disabled={exporting}>
+									Export CSV
+								</button>
+							</div>
+						</div>
+						<p class="text-xs opacity-60">These conditions are predicted to improve your response(s). Run these experiments and re-analyze to refine the model.</p>
 						<DataTable data={$suggestions} />
+
+						{#if $hasPareto && $paretoPoints && $paretoPoints.length > 0}
+							<div class="divider my-2"></div>
+							<h4 class="font-bold text-sm">Pareto Frontier</h4>
+							<p class="text-xs opacity-60">Pareto-optimal points from your existing data — no single objective can be improved without worsening another.</p>
+							<DataTable data={$paretoPoints.map((p: any) => ({ ...p.parameters, ...p.objectives }))} />
+						{/if}
 					</div>
+				</div>
+
+			{:else if activeTab === 'bo-plots' && Object.keys(boPlots).length > 0}
+				<div class="space-y-4">
+					{#if boPlots['bo-response-surface']}
+						<div>
+							<h4 class="font-bold text-sm mb-2">Response Surface</h4>
+							<PlotImage src={boPlots['bo-response-surface']} alt="BO Response Surface" />
+						</div>
+					{/if}
+					{#if boPlots['bo-pareto']}
+						<div>
+							<h4 class="font-bold text-sm mb-2">Pareto Frontier</h4>
+							<PlotImage src={boPlots['bo-pareto']} alt="Pareto Frontier" />
+						</div>
+					{/if}
+					{#if boPlots['bo-parallel']}
+						<div>
+							<h4 class="font-bold text-sm mb-2">Parallel Coordinates</h4>
+							<PlotImage src={boPlots['bo-parallel']} alt="Parallel Coordinates" />
+						</div>
+					{/if}
 				</div>
 
 			{:else}

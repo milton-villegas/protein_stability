@@ -9,3 +9,6 @@ export const analysisResults = writable<Record<string, any> | null>(null);
 export const modelComparison = writable<any>(null);
 export const plots = writable<Record<string, string>>({});
 export const suggestions = writable<any[] | null>(null);
+export const hasPareto = writable(false);
+export const paretoPoints = writable<any[] | null>(null);
+export const analysisSummary = writable<Record<string, any> | null>(null);
