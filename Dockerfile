@@ -8,12 +8,10 @@ RUN apt-get update && apt-get install -y curl && \
 
 WORKDIR /app
 
-# Install Python dependencies
-COPY requirements.txt backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt -r backend/requirements.txt
-
-# Install SMT for optimized LHS
-RUN pip install --no-cache-dir smt
+# Install Python dependencies first (cached layer)
+COPY requirements.txt ./requirements.txt
+COPY backend/requirements.txt ./backend-requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -r backend-requirements.txt smt
 
 # Copy project files
 COPY . .
