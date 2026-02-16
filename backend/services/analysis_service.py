@@ -16,13 +16,29 @@ def load_and_detect(filepath: str) -> Dict[str, Any]:
 
     potential_responses = handler.get_potential_response_columns()
 
-    # Preview first rows
-    preview = handler.data.head(10).fillna("").to_dict(orient="records")
+    # Preview first rows - convert to plain Python types for JSON serialization
+    preview_df = handler.data.head(10).fillna("")
+    preview = []
+    for _, row in preview_df.iterrows():
+        clean_row = {}
+        for col in preview_df.columns:
+            val = row[col]
+            if isinstance(val, (np.integer,)):
+                clean_row[str(col)] = int(val)
+            elif isinstance(val, (np.floating,)):
+                clean_row[str(col)] = float(val) if not np.isnan(val) else ""
+            elif isinstance(val, np.bool_):
+                clean_row[str(col)] = bool(val)
+            elif hasattr(val, 'isoformat'):
+                clean_row[str(col)] = str(val)
+            else:
+                clean_row[str(col)] = str(val) if val != "" else ""
+        preview.append(clean_row)
 
     return {
         "handler": handler,
-        "columns": list(handler.data.columns),
-        "potential_responses": potential_responses,
+        "columns": [str(c) for c in handler.data.columns],
+        "potential_responses": [str(r) for r in potential_responses],
         "preview_rows": preview,
         "total_rows": len(handler.data),
     }
