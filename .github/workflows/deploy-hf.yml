@@ -14,7 +14,15 @@ jobs:
           fetch-depth: 0
           lfs: true
 
+      - name: Add HF Spaces config to README
+        run: |
+          printf '%s\n' '---' 'title: SCOUT' 'emoji: 🔬' 'colorFrom: blue' 'colorTo: green' 'sdk: docker' 'pinned: false' '---' '' | cat - README.md > tmp && mv tmp README.md
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git add README.md
+          git commit -m "Add HF config"
+
       - name: Push to Hugging Face
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push https://milton-villegas:$HF_TOKEN@huggingface.co/spaces/milton-villegas/SCOUT main
+        run: git push --force https://milton-villegas:$HF_TOKEN@huggingface.co/spaces/milton-villegas/SCOUT main
