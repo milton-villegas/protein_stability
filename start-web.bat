@@ -11,7 +11,7 @@ start /B cmd /c "cd %~dp0 && python -m uvicorn backend.main:app --host 0.0.0.0 -
 timeout /t 2 /nobreak > nul
 
 echo Starting frontend on http://localhost:5173...
-start /B cmd /c "cd %~dp0\frontend && npm run dev -- --host 0.0.0.0 --port 5173"
+start /B cmd /c "cd %~dp0\frontend && set VITE_API_URL=http://localhost:8000 && npm run dev -- --host 0.0.0.0 --port 5173"
 
 echo.
 echo ======================================
