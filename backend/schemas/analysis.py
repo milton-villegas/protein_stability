@@ -28,6 +28,7 @@ class OptimizeRequest(BaseModel):
     directions: Dict[str, str]
     constraints: Optional[Dict[str, Dict[str, float]]] = None
     n_suggestions: int = 5
+    exploration_mode: bool = False
 
 
 class OptimizeResponse(BaseModel):

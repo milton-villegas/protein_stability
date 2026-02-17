@@ -27,7 +27,7 @@ def test_make_serializable():
     assert _make_serializable(np.int64(5)) == 5
     assert _make_serializable(np.float64(2.5)) == 2.5
     assert _make_serializable(np.bool_(True)) is True
-    assert _make_serializable(np.float64("nan")) == 0
+    assert _make_serializable(np.float64("nan")) is None
     print("  [PASS] Scalar types")
 
     zero_d = np.array(3.14)
@@ -43,15 +43,15 @@ def test_make_serializable():
 
     s = pd.Series([1.0, 2.0, np.nan], index=["x", "y", "z"])
     result = _make_serializable(s)
-    assert isinstance(result, dict) and result["z"] == 0
+    assert isinstance(result, dict) and result["z"] is None
     json.dumps(result)
     print("  [PASS] Series")
 
     class FakeModel:
         pass
     assert _make_serializable(FakeModel()) is None
-    assert _make_serializable(float("nan")) == 0
-    assert _make_serializable(float("inf")) == 0
+    assert _make_serializable(float("nan")) is None
+    assert _make_serializable(float("inf")) is None
     print("  [PASS] Non-serializable / NaN / Inf")
 
     nested = {"stats": {"r2": np.float64(0.95)}, "values": np.array([1.0])}

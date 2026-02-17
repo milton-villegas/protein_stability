@@ -275,7 +275,7 @@ async def get_plot(
         elif plot_type == "distribution":
             image = plot_service.generate_response_distribution_plot(plotter)
         elif plot_type == "qq":
-            image = plot_service.generate_qq_plot(plotter)
+            image = plot_service.generate_qq_plot(plotter, residuals)
 
         logger.info(f"[PLOT] Success, image length={len(image)}")
         return {"image": image, "plot_type": plot_type}
@@ -291,13 +291,15 @@ async def run_optimization(
 ):
     """Run Bayesian optimization"""
     try:
-        logger.info(f"[OPTIMIZE] responses={body.response_columns}, directions={body.directions}")
+        logger.info(f"[OPTIMIZE] responses={body.response_columns}, directions={body.directions}, "
+                     f"exploration_mode={body.exploration_mode}")
         result = optimization_service.initialize_optimizer(
             session,
             body.response_columns,
             body.directions,
             body.constraints,
             body.n_suggestions,
+            body.exploration_mode,
         )
         logger.info(f"[OPTIMIZE] Success, {len(result.get('suggestions', []))} suggestions")
         return safe_json_response(result)
@@ -329,11 +331,41 @@ async def export_results(session: dict = Depends(get_current_session)):
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp_path = tmp.name
 
-        # Export each response's results
-        for resp_name, results in all_results.items():
+        if len(all_results) == 1:
+            # Single response: export normally (matches Tkinter behavior)
+            resp_name = list(all_results.keys())[0]
             effects = analyzer.calculate_main_effects(response_name=resp_name)
-            exporter.set_results(results, effects)
+            exporter.set_results(all_results[resp_name], effects)
             exporter.export_statistics_excel(tmp_path)
+        else:
+            # Multi-response: combine into one workbook with prefixed sheet names
+            import pandas as pd
+            with pd.ExcelWriter(tmp_path, engine='openpyxl') as writer:
+                for resp_name, results in all_results.items():
+                    effects = analyzer.calculate_main_effects(response_name=resp_name)
+                    prefix = resp_name[:20]  # Sheet name limit is 31 chars
+
+                    # Model Statistics
+                    model_stats_df = pd.DataFrame([results['model_stats']]).T
+                    model_stats_df.columns = ['Value']
+                    model_stats_df.index.name = 'Statistic'
+                    model_stats_df.to_excel(writer, sheet_name=f'{prefix}_Stats')
+
+                    # Coefficients
+                    coef_df = results['coefficients'].copy()
+                    coef_df['p-value'] = coef_df['p-value'].apply(lambda p: f"{p:.7e}")
+                    coef_df.to_excel(writer, sheet_name=f'{prefix}_Coeff')
+
+                    # Main Effects
+                    main_effects_combined = []
+                    for factor, effects_df in effects.items():
+                        edf = effects_df.copy()
+                        edf.insert(0, 'Factor', factor)
+                        edf.reset_index(inplace=True)
+                        edf.rename(columns={edf.columns[1]: 'Level'}, inplace=True)
+                        main_effects_combined.append(edf)
+                    combined_df = pd.concat(main_effects_combined, ignore_index=True)
+                    combined_df.to_excel(writer, sheet_name=f'{prefix}_Effects', index=False)
 
         with open(tmp_path, "rb") as f:
             content = f.read()
@@ -384,6 +416,7 @@ async def export_bo_batch(
             protein_stock=body.protein_stock,
             protein_final=body.protein_final,
             final_volume=body.final_volume,
+            existing_data=existing_data,
         )
 
         return Response(

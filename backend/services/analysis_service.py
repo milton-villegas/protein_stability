@@ -74,7 +74,18 @@ def run_analysis(
                 f"response_column={getattr(analyzer, 'response_column', None)}")
 
     try:
-        if analyzer.response_columns:
+        # Auto model selection: compare all models, pick best per response
+        if model_type == "auto":
+            logger.info("[SERVICE.RUN] Auto model selection: comparing all models")
+            raw_results = {}
+            responses = analyzer.response_columns or [analyzer.response_column]
+            for resp_name in responses:
+                comparison = analyzer.compare_all_models(response_name=resp_name)
+                best = analyzer.select_best_model(comparison)
+                chosen = best.get("recommended_model", "linear")
+                logger.info(f"[SERVICE.RUN] Auto-selected '{chosen}' for '{resp_name}'")
+                raw_results[resp_name] = analyzer.fit_model(chosen, response_name=resp_name)
+        elif analyzer.response_columns:
             logger.info(f"[SERVICE.RUN] Fitting model for all responses: {analyzer.response_columns}")
             raw_results = analyzer.fit_model_all_responses(model_type=model_type)
         else:
@@ -145,7 +156,7 @@ def get_main_effects(
 
     serialized = {}
     for factor, df in effects.items():
-        serialized[factor] = df.fillna(0).to_dict(orient="records")
+        serialized[factor] = df.where(df.notna(), other=None).to_dict(orient="records")
 
     return serialized
 
@@ -313,14 +324,14 @@ def _make_serializable(obj: Any) -> Any:
     elif isinstance(obj, (list, tuple)):
         return [_make_serializable(item) for item in obj]
     elif isinstance(obj, pd.DataFrame):
-        records = obj.fillna(0).to_dict(orient="records")
+        records = obj.where(obj.notna(), other=None).to_dict(orient="records")
         return [_make_serializable(r) for r in records]
     elif isinstance(obj, pd.Series):
-        return _make_serializable(obj.fillna(0).to_dict())
+        return _make_serializable(obj.where(obj.notna(), other=None).to_dict())
     elif isinstance(obj, (np.integer,)):
         return int(obj)
     elif isinstance(obj, (np.floating,)):
-        return float(obj) if not np.isnan(obj) else 0
+        return float(obj) if not np.isnan(obj) else None
     elif isinstance(obj, np.ndarray):
         converted = obj.tolist()
         if isinstance(converted, list):
@@ -331,7 +342,7 @@ def _make_serializable(obj: Any) -> Any:
     elif isinstance(obj, np.bool_):
         return bool(obj)
     elif isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
-        return 0
+        return None
     else:
         # Skip non-serializable objects (e.g. statsmodels RegressionResultsWrapper)
         try:

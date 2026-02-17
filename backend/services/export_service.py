@@ -171,6 +171,7 @@ def generate_excel_bytes(
     protein_stock: Optional[float] = None,
     protein_final: Optional[float] = None,
     final_volume: float = 200.0,
+    existing_data: Optional[pd.DataFrame] = None,
 ) -> bytes:
     """Generate Excel file as bytes matching real SCOUT export format.
 
@@ -178,6 +179,9 @@ def generate_excel_bytes(
     - Sheet 1: 'Sample Tracking' - design data with well positions
     - Sheet 2: 'Stock_Concentrations' - 5-column format matching original
     - Sheet 3: 'Reagent Setup Guide' - reservoir positions and total volumes
+
+    If existing_data is provided (for BO batch exports), prepends those rows
+    before the new rows in Sheet 1, matching Tkinter's append behavior.
     """
     output = io.BytesIO()
 
@@ -194,13 +198,31 @@ def generate_excel_bytes(
         cell.alignment = Alignment(horizontal="center")
         cell.fill = PatternFill(start_color="4CAF50", end_color="4CAF50", fill_type="solid")
 
-    for row_idx, (_, row) in enumerate(excel_df.iterrows(), 2):
+    next_row = 2
+
+    # Write existing data rows first (for BO batch: original factorial data)
+    if existing_data is not None and not existing_data.empty:
+        for _, row in existing_data.iterrows():
+            for col_idx, header in enumerate(headers, 1):
+                value = row.get(header, "")
+                if pd.isna(value):
+                    value = ""
+                try:
+                    numeric = float(value)
+                    ws.cell(row=next_row, column=col_idx, value=numeric)
+                except (ValueError, TypeError):
+                    ws.cell(row=next_row, column=col_idx, value=value)
+            next_row += 1
+
+    # Write new rows (design or BO suggestions)
+    for _, row in excel_df.iterrows():
         for col_idx, value in enumerate(row, 1):
             try:
                 numeric = float(value)
-                ws.cell(row=row_idx, column=col_idx, value=numeric)
+                ws.cell(row=next_row, column=col_idx, value=numeric)
             except (ValueError, TypeError):
-                ws.cell(row=row_idx, column=col_idx, value=value)
+                ws.cell(row=next_row, column=col_idx, value=value)
+        next_row += 1
 
     # Auto-adjust column widths for Sample Tracking
     for col in ws.columns:
