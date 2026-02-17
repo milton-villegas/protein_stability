@@ -183,14 +183,6 @@
 		exporting = false;
 	}
 
-	let tabsEl: HTMLElement;
-
-	function switchTab(tab: string) {
-		activeTab = tab;
-		// Keep the tabs in view after content swap
-		requestAnimationFrame(() => tabsEl?.scrollIntoView({ behavior: 'instant', block: 'nearest' }));
-	}
-
 	let resultEntries = $derived(
 		$analysisResults ? Object.entries($analysisResults) : []
 	);
@@ -249,20 +241,20 @@
 
 {#if $analysisResults}
 	<div class="mt-4">
-		<div role="tablist" class="tabs tabs-bordered" bind:this={tabsEl}>
-			<button role="tab" class="tab" class:tab-active={activeTab === 'results'} onclick={() => switchTab('results')}>Results</button>
-			<button role="tab" class="tab" class:tab-active={activeTab === 'main-effects'} onclick={() => switchTab('main-effects')}>Main Effects</button>
-			<button role="tab" class="tab" class:tab-active={activeTab === 'interactions'} onclick={() => switchTab('interactions')}>Interactions</button>
-			<button role="tab" class="tab" class:tab-active={activeTab === 'residuals'} onclick={() => switchTab('residuals')}>Residuals</button>
-			<button role="tab" class="tab" class:tab-active={activeTab === 'predictions'} onclick={() => switchTab('predictions')}>Predictions</button>
+		<div role="tablist" class="tabs tabs-bordered">
+			<button role="tab" class="tab" class:tab-active={activeTab === 'results'} onclick={() => activeTab = 'results'}>Results</button>
+			<button role="tab" class="tab" class:tab-active={activeTab === 'main-effects'} onclick={() => activeTab = 'main-effects'}>Main Effects</button>
+			<button role="tab" class="tab" class:tab-active={activeTab === 'interactions'} onclick={() => activeTab = 'interactions'}>Interactions</button>
+			<button role="tab" class="tab" class:tab-active={activeTab === 'residuals'} onclick={() => activeTab = 'residuals'}>Residuals</button>
+			<button role="tab" class="tab" class:tab-active={activeTab === 'predictions'} onclick={() => activeTab = 'predictions'}>Predictions</button>
 			{#if $modelComparison}
-				<button role="tab" class="tab" class:tab-active={activeTab === 'comparison'} onclick={() => switchTab('comparison')}>Models</button>
+				<button role="tab" class="tab" class:tab-active={activeTab === 'comparison'} onclick={() => activeTab = 'comparison'}>Models</button>
 			{/if}
 			{#if $suggestions}
-				<button role="tab" class="tab" class:tab-active={activeTab === 'suggestions'} onclick={() => switchTab('suggestions')}>Suggestions</button>
+				<button role="tab" class="tab" class:tab-active={activeTab === 'suggestions'} onclick={() => activeTab = 'suggestions'}>Suggestions</button>
 			{/if}
 			{#if $suggestions && Object.keys(boPlots).length > 0}
-				<button role="tab" class="tab" class:tab-active={activeTab === 'bo-plots'} onclick={() => switchTab('bo-plots')}>BO Plots</button>
+				<button role="tab" class="tab" class:tab-active={activeTab === 'bo-plots'} onclick={() => activeTab = 'bo-plots'}>BO Plots</button>
 			{/if}
 		</div>
 
@@ -286,64 +278,84 @@
 			</div>
 		{/if}
 
-		<div class="mt-3">
-			{#if activeTab === 'results'}
-				<!-- Analysis Summary with explanations -->
-				{#if $analysisSummary}
-					<ResultsDetail summary={$analysisSummary} />
-				{/if}
+		<!-- Tab panels: use display to toggle instead of {#if} to prevent scroll jumps -->
+		<div class="mt-3" style:display={activeTab === 'results' ? 'block' : 'none'}>
+			{#if $analysisSummary}
+				<ResultsDetail summary={$analysisSummary} />
+			{/if}
 
-				<!-- Raw stats per response -->
-				{#each resultEntries as [responseName, result]}
-					<details class="collapse collapse-arrow bg-base-200 mb-3">
-						<summary class="collapse-title text-sm font-bold p-4 min-h-0">
-							{responseName} — Model Statistics
-						</summary>
-						<div class="collapse-content px-4 pb-4">
-							{#if result.model_stats}
-								<div class="stats stats-horizontal shadow text-xs">
-									<div class="stat p-2">
-										<div class="stat-title text-xs">R-squared</div>
-										<div class="stat-value text-sm">{(result.model_stats.r_squared ?? 0).toFixed(4)}</div>
-									</div>
-									<div class="stat p-2">
-										<div class="stat-title text-xs">Adj R-squared</div>
-										<div class="stat-value text-sm">{(result.model_stats.adj_r_squared ?? 0).toFixed(4)}</div>
-									</div>
-									<div class="stat p-2">
-										<div class="stat-title text-xs">F-statistic</div>
-										<div class="stat-value text-sm">{(result.model_stats.f_statistic ?? 0).toFixed(2)}</div>
-									</div>
-									<div class="stat p-2">
-										<div class="stat-title text-xs">p-value</div>
-										<div class="stat-value text-sm">{(result.model_stats.f_pvalue ?? 0).toExponential(2)}</div>
-									</div>
+			{#each resultEntries as [responseName, result]}
+				<details class="collapse collapse-arrow bg-base-200 mb-3">
+					<summary class="collapse-title text-sm font-bold p-4 min-h-0">
+						{responseName} — Model Statistics
+					</summary>
+					<div class="collapse-content px-4 pb-4">
+						{#if result.model_stats}
+							<div class="stats stats-horizontal shadow text-xs">
+								<div class="stat p-2">
+									<div class="stat-title text-xs">R-squared</div>
+									<div class="stat-value text-sm">{(result.model_stats.r_squared ?? 0).toFixed(4)}</div>
 								</div>
-							{/if}
+								<div class="stat p-2">
+									<div class="stat-title text-xs">Adj R-squared</div>
+									<div class="stat-value text-sm">{(result.model_stats.adj_r_squared ?? 0).toFixed(4)}</div>
+								</div>
+								<div class="stat p-2">
+									<div class="stat-title text-xs">F-statistic</div>
+									<div class="stat-value text-sm">{(result.model_stats.f_statistic ?? 0).toFixed(2)}</div>
+								</div>
+								<div class="stat p-2">
+									<div class="stat-title text-xs">p-value</div>
+									<div class="stat-value text-sm">{(result.model_stats.f_pvalue ?? 0).toExponential(2)}</div>
+								</div>
+							</div>
+						{/if}
 
-							{#if result.coefficients}
-								<h5 class="text-xs font-bold mt-2">Coefficients</h5>
-								{#if Array.isArray(result.coefficients)}
-									<DataTable data={result.coefficients} maxRows={20} />
-								{/if}
+						{#if result.coefficients}
+							<h5 class="text-xs font-bold mt-2">Coefficients</h5>
+							{#if Array.isArray(result.coefficients)}
+								<DataTable data={result.coefficients} maxRows={20} />
 							{/if}
-						</div>
-					</details>
-				{/each}
+						{/if}
+					</div>
+				</details>
+			{/each}
+		</div>
 
-			{:else if activeTab === 'main-effects' && $plots['main-effects']}
+		<div class="mt-3" style:display={activeTab === 'main-effects' ? 'block' : 'none'}>
+			{#if $plots['main-effects']}
 				<PlotImage src={$plots['main-effects']} alt="Main Effects" />
+			{:else}
+				<p class="text-sm text-center opacity-60 p-4">Plot not available</p>
+			{/if}
+		</div>
 
-			{:else if activeTab === 'interactions' && $plots['interactions']}
+		<div class="mt-3" style:display={activeTab === 'interactions' ? 'block' : 'none'}>
+			{#if $plots['interactions']}
 				<PlotImage src={$plots['interactions']} alt="Interactions" />
+			{:else}
+				<p class="text-sm text-center opacity-60 p-4">Plot not available</p>
+			{/if}
+		</div>
 
-			{:else if activeTab === 'residuals' && $plots['residuals']}
+		<div class="mt-3" style:display={activeTab === 'residuals' ? 'block' : 'none'}>
+			{#if $plots['residuals']}
 				<PlotImage src={$plots['residuals']} alt="Residuals" />
+			{:else}
+				<p class="text-sm text-center opacity-60 p-4">Plot not available</p>
+			{/if}
+		</div>
 
-			{:else if activeTab === 'predictions' && $plots['predictions']}
+		<div class="mt-3" style:display={activeTab === 'predictions' ? 'block' : 'none'}>
+			{#if $plots['predictions']}
 				<PlotImage src={$plots['predictions']} alt="Predictions vs Actual" />
+			{:else}
+				<p class="text-sm text-center opacity-60 p-4">Plot not available</p>
+			{/if}
+		</div>
 
-			{:else if activeTab === 'comparison' && $modelComparison}
+		{#if $modelComparison}
+			<div class="mt-3" style:display={activeTab === 'comparison' ? 'block' : 'none'}>
 				<div class="card bg-base-200">
 					<div class="card-body p-4">
 						<h4 class="font-bold text-sm">Model Comparison</h4>
@@ -371,8 +383,11 @@
 						{/each}
 					</div>
 				</div>
+			</div>
+		{/if}
 
-			{:else if activeTab === 'suggestions' && $suggestions}
+		{#if $suggestions}
+			<div class="mt-3" style:display={activeTab === 'suggestions' ? 'block' : 'none'}>
 				<div class="card bg-base-200">
 					<div class="card-body p-4">
 						<div class="flex items-center justify-between flex-wrap gap-2">
@@ -405,8 +420,11 @@
 						{/if}
 					</div>
 				</div>
+			</div>
+		{/if}
 
-			{:else if activeTab === 'bo-plots' && Object.keys(boPlots).length > 0}
+		{#if $suggestions && Object.keys(boPlots).length > 0}
+			<div class="mt-3" style:display={activeTab === 'bo-plots' ? 'block' : 'none'}>
 				<div class="space-y-4">
 					{#if boPlots['bo-response-surface']}
 						<div>
@@ -427,10 +445,7 @@
 						</div>
 					{/if}
 				</div>
-
-			{:else}
-				<p class="text-sm text-center opacity-60 p-4">Plot not available</p>
-			{/if}
-		</div>
+			</div>
+		{/if}
 	</div>
 {/if}
