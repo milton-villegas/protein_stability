@@ -20,9 +20,9 @@ export async function updateProjectName(name: string): Promise<any> {
 }
 
 export async function saveProject(): Promise<void> {
-	const blob = await downloadFile('/api/project/save');
+	const { blob, filename } = await downloadFile('/api/project/save');
 	const info = await getProjectInfo();
-	triggerDownload(blob, `${info.name}.json`);
+	triggerDownload(blob, filename ?? `${info.name}.json`);
 }
 
 export async function loadProject(file: File): Promise<ProjectInfo> {

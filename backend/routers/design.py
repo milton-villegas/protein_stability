@@ -2,6 +2,7 @@
 
 import logging
 import traceback
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
@@ -224,7 +225,8 @@ async def export_excel(
             final_volume=body.final_volume,
         )
 
-        filename = f"{project.name}_Design.xlsx"
+        date_str = datetime.now().strftime('%Y%m%d')
+        filename = f"{project.name}_Design_{date_str}.xlsx"
         return Response(
             content=excel_bytes,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -260,7 +262,8 @@ async def export_csv(
 
         csv_bytes = export_service.generate_csv_bytes(volume_df)
 
-        filename = f"{project.name}_Opentrons.csv"
+        date_str = datetime.now().strftime('%Y%m%d')
+        filename = f"{project.name}_Design_{date_str}_Opentron.csv"
         return Response(
             content=csv_bytes,
             media_type="text/csv",

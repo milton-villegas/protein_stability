@@ -77,7 +77,7 @@ export async function buildFactorial(finalVolume: number = 200, proteinStock?: n
 }
 
 export async function exportExcel(finalVolume: number = 200, proteinStock?: number, proteinFinal?: number): Promise<void> {
-	const blob = await downloadFile('/api/design/export/excel', {
+	const { blob, filename } = await downloadFile('/api/design/export/excel', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
@@ -86,11 +86,11 @@ export async function exportExcel(finalVolume: number = 200, proteinStock?: numb
 			protein_final: proteinFinal ?? null,
 		}),
 	});
-	triggerDownload(blob, 'Design.xlsx');
+	triggerDownload(blob, filename ?? 'Design.xlsx');
 }
 
 export async function exportCsv(finalVolume: number = 200, proteinStock?: number, proteinFinal?: number): Promise<void> {
-	const blob = await downloadFile('/api/design/export/csv', {
+	const { blob, filename } = await downloadFile('/api/design/export/csv', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
@@ -99,5 +99,5 @@ export async function exportCsv(finalVolume: number = 200, proteinStock?: number
 			protein_final: proteinFinal ?? null,
 		}),
 	});
-	triggerDownload(blob, 'Opentrons.csv');
+	triggerDownload(blob, filename ?? 'Opentron.csv');
 }

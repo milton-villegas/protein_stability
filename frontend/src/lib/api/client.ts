@@ -62,7 +62,7 @@ export async function uploadFile<T>(path: string, file: File): Promise<T> {
 	return res.json();
 }
 
-export async function downloadFile(path: string, options?: RequestInit): Promise<Blob> {
+export async function downloadFile(path: string, options?: RequestInit): Promise<{ blob: Blob; filename?: string }> {
 	const res = await fetch(`${BASE_URL}${path}`, {
 		...options,
 		headers: { ...sessionHeaders(), ...options?.headers },
@@ -79,7 +79,14 @@ export async function downloadFile(path: string, options?: RequestInit): Promise
 		throw new ApiError(res.status, detail);
 	}
 
-	return res.blob();
+	const disposition = res.headers.get('Content-Disposition');
+	let filename: string | undefined;
+	if (disposition) {
+		const match = disposition.match(/filename="?([^";\n]+)"?/);
+		if (match) filename = match[1];
+	}
+
+	return { blob: await res.blob(), filename };
 }
 
 export function triggerDownload(blob: Blob, filename: string) {

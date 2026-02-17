@@ -63,26 +63,26 @@ export async function getAnalysisSummary(): Promise<Record<string, any>> {
 }
 
 export async function exportResults(): Promise<void> {
-	const blob = await downloadFile('/api/analysis/export/results');
-	triggerDownload(blob, 'analysis_results.xlsx');
+	const { blob, filename } = await downloadFile('/api/analysis/export/results');
+	triggerDownload(blob, filename ?? 'analysis_results.xlsx');
 }
 
 export async function exportBOBatch(finalVolume: number = 100, batchNumber: number = 1): Promise<void> {
-	const blob = await downloadFile('/api/analysis/export/bo-batch', {
+	const { blob, filename } = await downloadFile('/api/analysis/export/bo-batch', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ final_volume: finalVolume, batch_number: batchNumber }),
 	});
-	triggerDownload(blob, 'bo_batch.xlsx');
+	triggerDownload(blob, filename ?? 'bo_batch.xlsx');
 }
 
 export async function exportBOCsv(finalVolume: number = 100, batchNumber: number = 1): Promise<void> {
-	const blob = await downloadFile('/api/analysis/export/bo-csv', {
+	const { blob, filename } = await downloadFile('/api/analysis/export/bo-csv', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ final_volume: finalVolume, batch_number: batchNumber }),
 	});
-	triggerDownload(blob, 'bo_batch.csv');
+	triggerDownload(blob, filename ?? 'bo_batch.csv');
 }
 
 export async function getParetoFrontier(): Promise<any> {

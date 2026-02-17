@@ -202,6 +202,19 @@ def generate_excel_bytes(
             except (ValueError, TypeError):
                 ws.cell(row=row_idx, column=col_idx, value=value)
 
+    # Auto-adjust column widths for Sample Tracking
+    for col in ws.columns:
+        max_length = 0
+        col_letter = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except Exception:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[col_letter].width = adjusted_width
+
     # --- Sheet 2: Stock_Concentrations (5-column unified format) ---
     stock_ws = wb.create_sheet(title="Stock_Concentrations")
 
@@ -272,6 +285,19 @@ def generate_excel_bytes(
         stock_ws.cell(row=row_idx, column=3, value=protein_vol)
         stock_ws.cell(row=row_idx, column=4, value="")
         stock_ws.cell(row=row_idx, column=5, value="µL")
+
+    # Auto-adjust column widths for Stock_Concentrations
+    for col in stock_ws.columns:
+        max_length = 0
+        col_letter = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except Exception:
+                pass
+        adjusted_width = min(max_length + 2, 30)
+        stock_ws.column_dimensions[col_letter].width = adjusted_width
 
     # --- Sheet 3: Reagent Setup Guide ---
     _create_reagent_setup_guide(wb, volume_df, stock_concs, per_level_concs)
