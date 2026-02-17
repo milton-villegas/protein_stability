@@ -50,14 +50,11 @@ def build_factorial_design(
         (excel_data, volume_data, warnings)
     """
     excel_df, volume_df = designer.build_factorial_design(
-        factors, stock_concs, final_volume
+        factors, stock_concs, final_volume,
+        per_level_concs=per_level_concs,
+        protein_stock=protein_stock,
+        protein_final=protein_final,
     )
-
-    # Add Source and Batch columns (matching original SCOUT format)
-    if "Source" not in excel_df.columns:
-        resp_idx = list(excel_df.columns).index("Response") if "Response" in excel_df.columns else len(excel_df.columns)
-        excel_df.insert(resp_idx, "Batch", 0)
-        excel_df.insert(resp_idx, "Source", "FULL_FACTORIAL")
 
     # Convert numeric strings to numbers for display
     for col in excel_df.columns:
@@ -67,13 +64,11 @@ def build_factorial_design(
             lambda v: float(v) if _is_numeric(v) else v
         )
 
-    # Add protein volume row if protein params provided
+    # Add protein volume column for preview display (not in Opentrons CSV)
+    # Water is already adjusted by VolumeCalculator
     if protein_stock and protein_final and protein_stock > 0:
         protein_vol = (protein_final / protein_stock) * final_volume
         volume_df["protein"] = protein_vol
-        # Adjust water column
-        if "water" in volume_df.columns:
-            volume_df["water"] = volume_df["water"] - protein_vol
 
     excel_data = _serialize_df(excel_df)
     volume_data = _serialize_df(volume_df)

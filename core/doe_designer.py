@@ -11,6 +11,13 @@ from core.volume_calculator import VolumeCalculator, VolumeValidator
 from core.design_validator import DesignValidator
 from config.design_config import CATEGORICAL_FACTORS, MAX_TOTAL_WELLS
 
+# Maps categorical factors to their paired concentration factors
+CATEGORICAL_PAIRS = {
+    "buffer pH": "buffer_concentration",
+    "detergent": "detergent_concentration",
+    "reducing_agent": "reducing_agent_concentration",
+}
+
 
 class DoEDesigner:
     """Handles factorial design generation and volume calculations"""
@@ -144,7 +151,10 @@ class DoEDesigner:
     def build_factorial_design(self,
                                factors: Dict[str, List[str]],
                                stock_concs: Dict[str, float],
-                               final_volume: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
+                               final_volume: float,
+                               per_level_concs: Dict = None,
+                               protein_stock: float = None,
+                               protein_final: float = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Build full factorial design with Excel and volume data
 
@@ -152,6 +162,9 @@ class DoEDesigner:
             factors: Dict of factor_name → list of levels
             stock_concs: Dict of factor_name → stock concentration
             final_volume: Total final volume (µL)
+            per_level_concs: Dict of factor → level → {"stock": float, "final": float}
+            protein_stock: Protein stock concentration (mg/mL), optional
+            protein_final: Desired final protein concentration (mg/mL), optional
 
         Returns:
             (excel_df, volume_df): DataFrames for Excel export and Opentrons CSV
@@ -159,6 +172,15 @@ class DoEDesigner:
         Raises:
             ValueError: If inputs are invalid or design is impossible
         """
+        if per_level_concs is None:
+            per_level_concs = {}
+
+        # Filter out concentration factors when per-level mode is active
+        if per_level_concs.get("detergent") and "detergent_concentration" in factors:
+            factors = {k: v for k, v in factors.items() if k != "detergent_concentration"}
+        if per_level_concs.get("reducing_agent") and "reducing_agent_concentration" in factors:
+            factors = {k: v for k, v in factors.items() if k != "reducing_agent_concentration"}
+
         # Validate all inputs before proceeding with design generation
         self._validate_inputs(factors, stock_concs, final_volume)
 
@@ -168,26 +190,48 @@ class DoEDesigner:
             unique_phs = set(str(ph).strip() for ph in factors["buffer pH"])
             buffer_ph_values = sorted(unique_phs)
 
+        # Extract unique categorical values (skip None values)
+        detergent_values = self._extract_unique_categorical_values(factors, "detergent", skip_none=True)
+        reducing_agent_values = self._extract_unique_categorical_values(factors, "reducing_agent", skip_none=True)
+
         # Build factorial combinations
         factor_names = list(factors.keys())
         level_lists = [factors[f] for f in factor_names]
         combinations = list(itertools.product(*level_lists))
 
-        # Build headers
-        excel_headers = ["ID", "Plate_96", "Well_96", "Well_384"]
+        # Build Excel headers matching Tkinter format:
+        # [ID, Plate_96, Well_96, Well_384, Source, Batch, factors..., Response]
+        excel_headers = ["ID", "Plate_96", "Well_96", "Well_384", "Source", "Batch"]
+        added_factors = set()
         for fn in factor_names:
+            if fn in added_factors:
+                continue
             excel_headers.append(AVAILABLE_FACTORS.get(fn, fn))
+            added_factors.add(fn)
+            # Group categorical with their concentration pair
+            if fn in CATEGORICAL_PAIRS:
+                paired = CATEGORICAL_PAIRS[fn]
+                if paired in factor_names and paired not in added_factors:
+                    excel_headers.append(AVAILABLE_FACTORS.get(paired, paired))
+                    added_factors.add(paired)
         excel_headers.append("Response")
 
-        volume_headers = []
-        if "buffer pH" in factors:
-            for ph in buffer_ph_values:
-                volume_headers.append(f"buffer_{ph}")
-
+        # Build volume headers matching Tkinter format:
+        # [ID, buffer_pH_cols..., detergent_type_cols..., reducing_agent_type_cols..., other_factors..., water]
+        volume_headers = ["ID"]
+        for ph in buffer_ph_values:
+            volume_headers.append(f"buffer_{ph}")
+        for det in detergent_values:
+            det_clean = det.replace(' ', '_').replace('-', '_').lower()
+            volume_headers.append(det_clean)
+        for agent in reducing_agent_values:
+            agent_clean = agent.replace(' ', '_').replace('-', '_').lower()
+            volume_headers.append(agent_clean)
         for factor in factor_names:
-            if factor not in ["buffer pH", "buffer_concentration"]:
-                volume_headers.append(factor)
-
+            if factor in ("buffer pH", "buffer_concentration", "detergent", "detergent_concentration",
+                          "reducing_agent", "reducing_agent_concentration"):
+                continue
+            volume_headers.append(factor)
         volume_headers.append("water")
 
         # Calculate design
@@ -202,20 +246,38 @@ class DoEDesigner:
             # Generate well positions using WellMapper (384-well reading order)
             plate_num, well_pos, well_384 = self.well_mapper.generate_well_position_384_order(idx)
 
-            # Excel row
-            excel_row = [idx + 1, plate_num, well_pos, well_384]
+            # Excel row with Source and Batch
+            excel_row = [idx + 1, plate_num, well_pos, well_384, "FULL_FACTORIAL", 0]
+            added_factors_row = set()
             for fn in factor_names:
+                if fn in added_factors_row:
+                    continue
                 excel_row.append(row_dict.get(fn, ""))
+                added_factors_row.add(fn)
+                if fn in CATEGORICAL_PAIRS:
+                    paired = CATEGORICAL_PAIRS[fn]
+                    if paired in factor_names and paired not in added_factors_row:
+                        excel_row.append(row_dict.get(paired, ""))
+                        added_factors_row.add(paired)
             excel_row.append("")  # Empty Response column
             excel_rows.append(excel_row)
 
             # Volume calculations using VolumeCalculator
             volumes = self.volume_calculator.calculate_volumes(
-                row_dict, stock_concs, final_volume, buffer_ph_values
+                row_dict, stock_concs, final_volume, buffer_ph_values,
+                protein_stock=protein_stock,
+                protein_final=protein_final,
+                per_level_concs=per_level_concs
             )
 
-            volume_row = [volumes.get(h, 0) for h in volume_headers]
+            # Build volume row matching volume_headers order
+            volume_row = [idx + 1]  # ID first
+            for h in volume_headers[1:]:  # Skip ID
+                volume_row.append(volumes.get(h, 0))
             volume_rows.append(volume_row)
+
+            # For categorical factors, ensure all columns are populated
+            # (VolumeCalculator only sets the active type, we need 0 for others)
             volumes_list.append(volumes)
             well_identifiers.append((idx + 1, well_pos))
 
@@ -232,3 +294,20 @@ class DoEDesigner:
         volume_df = pd.DataFrame(volume_rows, columns=volume_headers)
 
         return excel_df, volume_df
+
+    @staticmethod
+    def _extract_unique_categorical_values(factors: Dict[str, List[str]],
+                                           factor_name: str,
+                                           skip_none: bool = False) -> List[str]:
+        """Extract unique values for categorical factors."""
+        if factor_name not in factors:
+            return []
+        unique_values = set()
+        for val in factors[factor_name]:
+            val_str = str(val).strip()
+            if skip_none:
+                if val_str and val_str.lower() not in ('none', '0', 'nan', ''):
+                    unique_values.add(val_str)
+            else:
+                unique_values.add(val_str)
+        return sorted(unique_values)

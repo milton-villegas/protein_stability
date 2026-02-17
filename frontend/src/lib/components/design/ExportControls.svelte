@@ -35,7 +35,7 @@
 	async function handleExportExcel() {
 		exporting = true;
 		try {
-			await exportExcel($finalVolume);
+			await exportExcel($finalVolume, $proteinStock ?? undefined, $proteinFinal ?? undefined);
 			showToast('Excel exported', 'success');
 		} catch (e: any) {
 			showToast(e.message, 'error');
@@ -46,7 +46,7 @@
 	async function handleExportCsv() {
 		exporting = true;
 		try {
-			await exportCsv($finalVolume);
+			await exportCsv($finalVolume, $proteinStock ?? undefined, $proteinFinal ?? undefined);
 			showToast('CSV exported', 'success');
 		} catch (e: any) {
 			showToast(e.message, 'error');

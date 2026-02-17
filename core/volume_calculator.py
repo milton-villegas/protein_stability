@@ -253,12 +253,12 @@ class VolumeCalculator:
         is_none = VolumeCalculator._is_none_value(categorical_value)
 
         if is_none or concentration == 0:
-            volumes[f"{factor_prefix}_{normalized_value}"] = 0.0
+            volumes[normalized_value] = 0.0
         else:
             volume = VolumeCalculator._calculate_component_volume(
                 concentration, stock_concentration, final_volume
             )
-            volumes[f"{factor_prefix}_{normalized_value}"] = volume
+            volumes[normalized_value] = volume
             total_volume = volume
 
         return volumes, total_volume

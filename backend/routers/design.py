@@ -173,8 +173,10 @@ async def build_factorial(
     try:
         logger.info(f"[BUILD-FACTORIAL] factors={list(factors.keys())}, stock_concs={stock_concs}, "
                      f"final_volume={body.final_volume}, protein_stock={body.protein_stock}, protein_final={body.protein_final}")
+        per_level_concs = project.get_all_per_level_concs()
         excel_data, volume_data, warnings = design_service.build_factorial_design(
             designer, factors, stock_concs, body.final_volume,
+            per_level_concs=per_level_concs,
             protein_stock=body.protein_stock,
             protein_final=body.protein_final,
         )
@@ -209,14 +211,11 @@ async def export_excel(
 
     try:
         excel_df, volume_df = designer.build_factorial_design(
-            factors, stock_concs, body.final_volume
+            factors, stock_concs, body.final_volume,
+            per_level_concs=per_level_concs,
+            protein_stock=body.protein_stock,
+            protein_final=body.protein_final,
         )
-
-        # Add Source and Batch columns if missing (matching original format)
-        if "Source" not in excel_df.columns:
-            resp_col_idx = list(excel_df.columns).index("Response") if "Response" in excel_df.columns else len(excel_df.columns)
-            excel_df.insert(resp_col_idx, "Batch", 0)
-            excel_df.insert(resp_col_idx, "Source", "FULL_FACTORIAL")
 
         excel_bytes = export_service.generate_excel_bytes(
             excel_df, volume_df, stock_concs, project.name,
@@ -250,9 +249,14 @@ async def export_csv(
     if not factors:
         raise HTTPException(400, "No factors defined")
 
+    per_level_concs = project.get_all_per_level_concs()
+
     try:
         _, volume_df = designer.build_factorial_design(
-            factors, stock_concs, body.final_volume
+            factors, stock_concs, body.final_volume,
+            per_level_concs=per_level_concs,
+            protein_stock=body.protein_stock,
+            protein_final=body.protein_final,
         )
 
         csv_bytes = export_service.generate_csv_bytes(volume_df)

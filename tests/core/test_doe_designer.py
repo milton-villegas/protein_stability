@@ -105,11 +105,12 @@ class TestDoEDesignerWellMapping:
     """Test well mapping functionality"""
 
     def test_well_positions_column_major(self):
-        """Test that wells are ordered for 384-well plate transfer"""
+        """Test that wells are ordered column-major in 384-well space within each plate"""
         designer = DoEDesigner()
 
         # Create design with 8 combinations
-        # These map to first 8 positions in 384-well reading order
+        # Column-major 384: fills down columns first (A1,B1,C1...P1,A2...)
+        # 8 samples all fit on plate 1
         factors = {
             'nacl': ['100', '200'],
             'glycerol': ['5', '10'],
@@ -125,18 +126,19 @@ class TestDoEDesignerWellMapping:
             factors, stock_concs, 200.0
         )
 
-        # First 8 samples should map to 384-well A1-A8
-        # Which come from 96-well odd columns in row A
-        expected_wells = ['A1', 'A3', 'A5', 'A7', 'A9', 'A11', 'A1', 'A3']
-        # Note: Samples 0-5 from plate 1, samples 6-7 from plate 2
+        # Column-major in 384 space: first 8 positions fill column 1
+        # 384 A1→96 A1, 384 B1→96 A2, 384 C1→96 B1, 384 D1→96 B2, etc.
+        expected_wells = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2']
         assert excel_df['Well_96'].tolist() == expected_wells
+        # All 8 samples on plate 1
+        assert all(excel_df['Plate_96'] == 1)
 
     def test_well_positions_multiple_columns(self):
-        """Test well positions with 384-well ordering"""
+        """Test well positions with column-major 384-well ordering"""
         designer = DoEDesigner()
 
         # Create design with 16 combinations
-        # Maps to 384-well A1-A16
+        # Column-major fills first column of 384 (16 rows), all on plate 1
         factors = {
             'nacl': ['100', '200', '300', '400'],
             'glycerol': ['5', '10'],
@@ -152,15 +154,12 @@ class TestDoEDesignerWellMapping:
             factors, stock_concs, 200.0
         )
 
-        # First sample (384 A1) comes from 96-well A1 plate 1
+        # All 16 samples on plate 1 (96 per plate)
+        assert all(excel_df['Plate_96'] == 1)
+        # First sample: 384 A1 → 96 A1
         assert excel_df['Well_96'].iloc[0] == 'A1'
-        assert excel_df['Plate_96'].iloc[0] == 1
-        # Sample 6 (384 A7) comes from 96-well A1 plate 2
-        assert excel_df['Well_96'].iloc[6] == 'A1'
-        assert excel_df['Plate_96'].iloc[6] == 2
-        # Sample 12 (384 A13) comes from 96-well A1 plate 3
-        assert excel_df['Well_96'].iloc[12] == 'A1'
-        assert excel_df['Plate_96'].iloc[12] == 3
+        # Sample 16 fills exactly one 384 column (16 rows A-P)
+        assert excel_df['Well_96'].iloc[15] == 'H2'
 
     def test_384_well_conversion(self):
         """Test 96-well to 384-well conversion"""
@@ -182,12 +181,12 @@ class TestDoEDesignerWellMapping:
         assert all(excel_df['Well_384'].str.match(r'^[A-P]\d+$'))
 
     def test_multiple_plates(self):
-        """Test design spanning multiple plates with 384-well ordering"""
+        """Test design spanning multiple plates with column-major 384-well ordering"""
         designer = DoEDesigner()
 
         # Create design with 20 combinations
-        # With 384-well ordering, each plate uses only 6 positions in row A
-        # So 20 samples span 4 plates (6+6+6+2)
+        # With column-major ordering, 96 samples per plate
+        # 20 samples all fit on plate 1
         factors = {
             'nacl': ['100', '200', '300', '400', '500'],
             'glycerol': ['5', '10', '15', '20']
@@ -201,28 +200,29 @@ class TestDoEDesignerWellMapping:
             factors, stock_concs, 200.0
         )
 
-        # 5 * 4 = 20 combinations
+        # 5 * 4 = 20 combinations, all on plate 1
         assert len(excel_df) == 20
-        # With 384-well ordering: 6 samples per plate in first row
-        assert excel_df['Plate_96'].max() == 4
+        assert excel_df['Plate_96'].max() == 1
 
-        # Now test with more combinations (24 samples = exactly 4 full plates)
-        factors_exact = {
-            'nacl': ['100', '200', '300', '400'],
-            'glycerol': ['5', '10', '15', '20', '25', '30']
+        # Test with >96 combinations to span multiple plates
+        factors_large = {
+            'nacl': ['100', '200', '300', '400', '500'],
+            'glycerol': ['5', '10', '15', '20'],
+            'mgcl2': ['1', '5', '10', '15', '20']
         }
-        stock_concs_exact = {
+        stock_concs_large = {
             'nacl': 5000.0,
-            'glycerol': 100.0
+            'glycerol': 100.0,
+            'mgcl2': 1000.0
         }
 
         excel_df, _ = designer.build_factorial_design(
-            factors_exact, stock_concs_exact, 200.0
+            factors_large, stock_concs_large, 200.0
         )
 
-        # 4 * 6 = 24 combinations, fills exactly 4 plates (6 per plate)
-        assert len(excel_df) == 24
-        assert excel_df['Plate_96'].max() == 4
+        # 5 * 4 * 5 = 100 combinations → 2 plates (96 + 4)
+        assert len(excel_df) == 100
+        assert excel_df['Plate_96'].max() == 2
 
 
 class TestDoEDesignerBufferPH:
@@ -312,9 +312,10 @@ class TestDoEDesignerVolumeCalculations:
             factors, stock_concs, final_volume
         )
 
-        # Check each row sums to final volume
+        # Check each row sums to final volume (exclude ID column)
+        vol_cols = [c for c in volume_df.columns if c != "ID"]
         for idx, row in volume_df.iterrows():
-            total = row.sum()
+            total = row[vol_cols].sum()
             assert abs(total - final_volume) < 0.1  # Allow small floating point errors
 
     def test_water_volume_positive(self):
@@ -430,13 +431,15 @@ class TestDoEDesignerEdgeCases:
         excel_df, volume_df = designer.build_factorial_design(
             factors, stock_concs, 100.0
         )
-        assert abs(volume_df.iloc[0].sum() - 100.0) < 0.1
+        vol_cols = [c for c in volume_df.columns if c != "ID"]
+        assert abs(volume_df.iloc[0][vol_cols].sum() - 100.0) < 0.1
 
         # Test with 300 µL
         excel_df, volume_df = designer.build_factorial_design(
             factors, stock_concs, 300.0
         )
-        assert abs(volume_df.iloc[0].sum() - 300.0) < 0.1
+        vol_cols = [c for c in volume_df.columns if c != "ID"]
+        assert abs(volume_df.iloc[0][vol_cols].sum() - 300.0) < 0.1
 
 
 class TestDoEDesignerCategoricalFactors:

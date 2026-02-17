@@ -48,7 +48,7 @@
 	</main>
 
 	<footer class="text-center text-xs opacity-40 py-2">
-		SCOUT v2.0.0
+		SCOUT v0.2.0
 	</footer>
 
 	<Toast />

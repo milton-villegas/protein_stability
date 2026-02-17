@@ -260,14 +260,15 @@ class WellMapper:
     @staticmethod
     def generate_well_position_384_order(sample_index: int) -> Tuple[int, str, str]:
         """
-        Generate 96-well position for a sample, ordered by 384-well reading order.
+        Generate 96-well position for a sample, ordered by 384-well column-major
+        order within each 96-well plate batch.
 
-        This is the main function to use for factorial design generation.
-        It ensures samples are numbered according to their final position
-        in the 384-well plate (reading left-to-right, top-to-bottom).
+        Samples 0-95 fill Plate 1, 96-191 fill Plate 2, etc.
+        Within each batch, positions are assigned in column-major order in the
+        384-well space (fill down columns first: A1, B1, C1...P1, A2, B2...).
 
         Args:
-            sample_index: 0-based sample index (in 384-well reading order)
+            sample_index: 0-based sample index
 
         Returns:
             Tuple of (plate_96, well_96, well_384)
@@ -279,14 +280,28 @@ class WellMapper:
             >>> WellMapper.generate_well_position_384_order(0)
             (1, 'A1', 'A1')
             >>> WellMapper.generate_well_position_384_order(1)
-            (1, 'A3', 'A2')
+            (1, 'A2', 'B1')
         """
-        # Get 96-well position from reverse mapping
-        plate_96, well_96 = WellMapper.reverse_map_384_to_96(sample_index)
+        # Determine which plate (1-4), 96 samples per plate
+        plate_96 = (sample_index // WELLS_PER_PLATE) + 1
+        pos_in_batch = sample_index % WELLS_PER_PLATE
 
-        # Calculate corresponding 384 position for verification
-        row_384 = sample_index // PLATE_384_COLS
-        col_384 = (sample_index % PLATE_384_COLS) + 1
+        # Column-major order in the 384-well space:
+        # Each plate occupies 6 columns (16 rows x 6 cols = 96 positions)
+        # Fill down columns first: row cycles 0-15, then next column
+        row_384 = pos_in_batch % PLATE_384_ROWS          # 0-15 (A-P)
+        col_within_plate = pos_in_batch // PLATE_384_ROWS  # 0-5
+
+        # Absolute 384-well column (1-24)
+        col_384 = (plate_96 - 1) * 6 + col_within_plate + 1
+
+        # Convert to 384-well index (row-major) for reverse mapping
+        well_384_index = row_384 * PLATE_384_COLS + (col_384 - 1)
+
+        # Reverse map to get the 96-well position
+        _, well_96 = WellMapper.reverse_map_384_to_96(well_384_index)
+
+        # Build 384-well position string
         well_384 = f"{chr(ord('A') + row_384)}{col_384}"
 
         return plate_96, well_96, well_384

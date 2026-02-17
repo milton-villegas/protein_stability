@@ -105,7 +105,7 @@ class TestVolumeCalculator:
         )
 
         # (0.1 * 200) / 10.0 = 2.0 µL
-        assert volumes["detergent_tween_20"] == 2.0
+        assert volumes["tween_20"] == 2.0
         assert total == 2.0
 
     def test_calculate_categorical_volumes_with_none(self):
@@ -114,7 +114,7 @@ class TestVolumeCalculator:
             "None", 0.0, 10.0, 200.0, "detergent"
         )
 
-        assert volumes["detergent_none"] == 0.0
+        assert volumes["none"] == 0.0
         assert total == 0.0
 
     def test_calculate_volumes_high_concentration_negative_water(self):
