@@ -26,6 +26,9 @@ if PROJECT_ROOT not in sys.path:
 
 from backend.config import CORS_ORIGINS, SESSION_COOKIE_NAME
 from backend.sessions import get_session, create_session
+
+SESSION_HEADER = "X-Session-ID"
+
 from backend.routers import config_routes, project, design, analysis
 
 
@@ -52,15 +55,23 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[SESSION_HEADER],
 )
 
 @app.middleware("http")
 async def auto_session_middleware(request: Request, call_next):
-    """Auto-create a session if no valid cookie exists"""
-    session_id = request.cookies.get(SESSION_COOKIE_NAME)
-    has_valid_session = session_id and get_session(session_id) is not None
+    """Auto-create a session if none exists (header or cookie)"""
+    # Check header first, then cookie
+    session_id = request.headers.get(SESSION_HEADER)
+    if session_id and get_session(session_id):
+        return await call_next(request)
 
-    if not has_valid_session and request.url.path.startswith("/api/"):
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if session_id and get_session(session_id):
+        return await call_next(request)
+
+    # Auto-create for API requests
+    if request.url.path.startswith("/api/"):
         session_id = create_session("SCOUT Project")
         request.state.new_session_id = session_id
         logging.getLogger("backend.session").info(
@@ -69,17 +80,9 @@ async def auto_session_middleware(request: Request, call_next):
 
     response: Response = await call_next(request)
 
-    # Set cookie on new sessions
+    # Return session ID in header so frontend can store it
     if hasattr(request.state, "new_session_id"):
-        response.set_cookie(
-            key=SESSION_COOKIE_NAME,
-            value=request.state.new_session_id,
-            httponly=True,
-            samesite="lax",
-            secure=False,
-            max_age=3600,
-            path="/",
-        )
+        response.headers[SESSION_HEADER] = request.state.new_session_id
 
     return response
 

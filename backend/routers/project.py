@@ -5,10 +5,9 @@ import json
 import tempfile
 import os
 
-from fastapi import APIRouter, Depends, Response, UploadFile, File
+from fastapi import APIRouter, Depends, Request, Response, UploadFile, File
 from fastapi.responses import StreamingResponse
 
-from backend.config import SESSION_COOKIE_NAME
 from backend.sessions import create_session
 from backend.dependencies import get_current_session
 from backend.schemas.project import ProjectCreateRequest, ProjectInfoResponse
@@ -18,17 +17,13 @@ router = APIRouter()
 
 
 @router.post("/new")
-async def new_project(request: ProjectCreateRequest, response: Response):
+async def new_project(request_body: ProjectCreateRequest, request: Request, response: Response):
     """Create a new project and session"""
-    session_id = create_session(request.name)
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=session_id,
-        httponly=True,
-        samesite="lax",
-        max_age=3600,
-    )
-    return {"session_id": session_id, "name": request.name}
+    session_id = create_session(request_body.name)
+    # Store on request.state so middleware sets the header
+    request.state.new_session_id = session_id
+    response.headers["X-Session-ID"] = session_id
+    return {"session_id": session_id, "name": request_body.name}
 
 
 @router.get("/info")

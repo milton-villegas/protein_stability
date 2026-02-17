@@ -1,4 +1,16 @@
 const BASE_URL = import.meta.env.VITE_API_URL || '';
+const SESSION_HEADER = 'X-Session-ID';
+
+let sessionId: string | null = null;
+
+function captureSession(res: Response) {
+	const id = res.headers.get(SESSION_HEADER);
+	if (id) sessionId = id;
+}
+
+function sessionHeaders(): Record<string, string> {
+	return sessionId ? { [SESSION_HEADER]: sessionId } : {};
+}
 
 export class ApiError extends Error {
 	constructor(public status: number, message: string) {
@@ -8,10 +20,11 @@ export class ApiError extends Error {
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
 	const res = await fetch(`${BASE_URL}${path}`, {
-		credentials: 'include',
-		headers: { 'Content-Type': 'application/json', ...options?.headers },
+		headers: { 'Content-Type': 'application/json', ...sessionHeaders(), ...options?.headers },
 		...options,
 	});
+
+	captureSession(res);
 
 	if (!res.ok) {
 		let detail = 'Request failed';
@@ -31,9 +44,11 @@ export async function uploadFile<T>(path: string, file: File): Promise<T> {
 
 	const res = await fetch(`${BASE_URL}${path}`, {
 		method: 'POST',
-		credentials: 'include',
+		headers: { ...sessionHeaders() },
 		body: form,
 	});
+
+	captureSession(res);
 
 	if (!res.ok) {
 		let detail = 'Upload failed';
@@ -49,9 +64,11 @@ export async function uploadFile<T>(path: string, file: File): Promise<T> {
 
 export async function downloadFile(path: string, options?: RequestInit): Promise<Blob> {
 	const res = await fetch(`${BASE_URL}${path}`, {
-		credentials: 'include',
+		headers: { ...sessionHeaders(), ...options?.headers },
 		...options,
 	});
+
+	captureSession(res);
 
 	if (!res.ok) {
 		let detail = 'Download failed';
