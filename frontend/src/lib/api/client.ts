@@ -20,8 +20,8 @@ export class ApiError extends Error {
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
 	const res = await fetch(`${BASE_URL}${path}`, {
-		headers: { 'Content-Type': 'application/json', ...sessionHeaders(), ...options?.headers },
 		...options,
+		headers: { 'Content-Type': 'application/json', ...sessionHeaders(), ...options?.headers },
 	});
 
 	captureSession(res);
@@ -64,8 +64,8 @@ export async function uploadFile<T>(path: string, file: File): Promise<T> {
 
 export async function downloadFile(path: string, options?: RequestInit): Promise<Blob> {
 	const res = await fetch(`${BASE_URL}${path}`, {
-		headers: { ...sessionHeaders(), ...options?.headers },
 		...options,
+		headers: { ...sessionHeaders(), ...options?.headers },
 	});
 
 	captureSession(res);
