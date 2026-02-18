@@ -54,13 +54,15 @@ export async function getCombinations(): Promise<{ total_combinations: number; p
 	return request('/api/design/combinations');
 }
 
-export async function generateDesign(designType: string, params: Record<string, any> = {}, finalVolume: number = 200): Promise<DesignGenerateResponse> {
+export async function generateDesign(designType: string, params: Record<string, any> = {}, finalVolume: number = 200, proteinStock?: number, proteinFinal?: number): Promise<DesignGenerateResponse> {
 	return request('/api/design/generate', {
 		method: 'POST',
 		body: JSON.stringify({
 			design_type: designType,
 			final_volume: finalVolume,
 			params,
+			protein_stock: proteinStock ?? null,
+			protein_final: proteinFinal ?? null,
 		}),
 	});
 }

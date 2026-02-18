@@ -3,6 +3,7 @@ SCOUT Web Backend
 FastAPI application serving the DoE Suite API
 """
 
+import asyncio
 import logging
 import sys
 import os
@@ -24,19 +25,30 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from backend.config import CORS_ORIGINS, SESSION_COOKIE_NAME
-from backend.sessions import get_session, create_session
+from backend.config import CORS_ORIGINS, SESSION_COOKIE_NAME, SESSION_MAX_AGE
+from backend.sessions import get_session, create_session, cleanup_expired_sessions
 
 SESSION_HEADER = "X-Session-ID"
 
 from backend.routers import config_routes, project, design, analysis
 
 
+async def _session_cleanup_loop():
+    """Periodically clean expired sessions"""
+    logger = logging.getLogger("backend.session")
+    while True:
+        await asyncio.sleep(300)  # Every 5 minutes
+        removed = cleanup_expired_sessions(SESSION_MAX_AGE)
+        if removed:
+            logger.info(f"[SESSION] Cleaned {removed} expired session(s)")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown tasks"""
+    task = asyncio.create_task(_session_cleanup_loop())
     yield
-    # Cleanup sessions on shutdown
+    task.cancel()
     from backend.sessions import _sessions
     _sessions.clear()
 
@@ -70,8 +82,8 @@ async def auto_session_middleware(request: Request, call_next):
     if session_id and get_session(session_id):
         return await call_next(request)
 
-    # Auto-create for API requests
-    if request.url.path.startswith("/api/"):
+    # Auto-create for API requests (skip read-only config/health endpoints)
+    if request.url.path.startswith("/api/") and not request.url.path.startswith(("/api/config", "/api/health")):
         session_id = create_session("SCOUT Project")
         request.state.new_session_id = session_id
         logging.getLogger("backend.session").info(

@@ -23,7 +23,7 @@
 					warnings: result.warnings,
 				};
 			} else {
-				$designResult = await generateDesign($selectedDesignType, designParams, $finalVolume);
+				$designResult = await generateDesign($selectedDesignType, designParams, $finalVolume, $proteinStock ?? undefined, $proteinFinal ?? undefined);
 			}
 			showToast(`Design generated: ${$designResult?.total_runs} runs`, 'success');
 		} catch (e: any) {

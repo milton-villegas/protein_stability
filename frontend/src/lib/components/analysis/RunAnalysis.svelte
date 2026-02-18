@@ -12,6 +12,7 @@
 	let selectedPlotResponse = $state('');
 	let loadingPlots = $state(false);
 	let nSuggestions = $state(5);
+	let explorationMode = $state(false);
 	let batchNumber = $state(1);
 	let boFinalVolume = $state(100);
 	let boPlots = $state<Record<string, string>>({});
@@ -26,7 +27,7 @@
 		{ value: 'mean', label: 'Mean (intercept only)' },
 	];
 
-	const PLOT_TYPES = ['main-effects', 'interactions', 'residuals', 'predictions'];
+	const PLOT_TYPES = ['main-effects', 'interactions', 'residuals', 'predictions', 'distribution', 'qq'];
 
 	async function loadPlots(response?: string) {
 		loadingPlots = true;
@@ -108,6 +109,7 @@
 						dirs,
 						Object.keys(cons).length > 0 ? cons : undefined,
 						nSuggestions,
+						explorationMode,
 					);
 					$suggestions = opt.suggestions;
 					$hasPareto = opt.has_pareto ?? false;
@@ -188,7 +190,7 @@
 	);
 
 	let isPlotTab = $derived(
-		['main-effects', 'interactions', 'residuals', 'predictions'].includes(activeTab)
+		['main-effects', 'interactions', 'residuals', 'predictions', 'distribution', 'qq'].includes(activeTab)
 	);
 </script>
 
@@ -216,6 +218,10 @@
 					<label class="label"><span class="label-text text-xs">Suggestions</span></label>
 					<input type="number" class="input input-sm input-bordered w-20" min="1" max="20" bind:value={nSuggestions} />
 				</div>
+				<label class="label cursor-pointer gap-2">
+					<input type="checkbox" class="toggle toggle-sm toggle-secondary" bind:checked={explorationMode} />
+					<span class="label-text text-xs">Exploration Mode</span>
+				</label>
 			{/if}
 
 			<button class="btn btn-sm btn-primary" onclick={handleRun} disabled={running || $responseConfigs.length === 0}>
@@ -247,6 +253,8 @@
 			<button role="tab" class="tab" class:tab-active={activeTab === 'interactions'} onclick={() => activeTab = 'interactions'}>Interactions</button>
 			<button role="tab" class="tab" class:tab-active={activeTab === 'residuals'} onclick={() => activeTab = 'residuals'}>Residuals</button>
 			<button role="tab" class="tab" class:tab-active={activeTab === 'predictions'} onclick={() => activeTab = 'predictions'}>Predictions</button>
+			<button role="tab" class="tab" class:tab-active={activeTab === 'distribution'} onclick={() => activeTab = 'distribution'}>Distribution</button>
+			<button role="tab" class="tab" class:tab-active={activeTab === 'qq'} onclick={() => activeTab = 'qq'}>Q-Q Plot</button>
 			{#if $modelComparison}
 				<button role="tab" class="tab" class:tab-active={activeTab === 'comparison'} onclick={() => activeTab = 'comparison'}>Models</button>
 			{/if}
@@ -349,6 +357,22 @@
 		<div class="mt-3" style:display={activeTab === 'predictions' ? 'block' : 'none'}>
 			{#if $plots['predictions']}
 				<PlotImage src={$plots['predictions']} alt="Predictions vs Actual" />
+			{:else}
+				<p class="text-sm text-center opacity-60 p-4">Plot not available</p>
+			{/if}
+		</div>
+
+		<div class="mt-3" style:display={activeTab === 'distribution' ? 'block' : 'none'}>
+			{#if $plots['distribution']}
+				<PlotImage src={$plots['distribution']} alt="Response Distribution" />
+			{:else}
+				<p class="text-sm text-center opacity-60 p-4">Plot not available</p>
+			{/if}
+		</div>
+
+		<div class="mt-3" style:display={activeTab === 'qq' ? 'block' : 'none'}>
+			{#if $plots['qq']}
+				<PlotImage src={$plots['qq']} alt="Q-Q Plot" />
 			{:else}
 				<p class="text-sm text-center opacity-60 p-4">Plot not available</p>
 			{/if}

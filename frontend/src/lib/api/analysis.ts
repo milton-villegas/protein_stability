@@ -46,6 +46,7 @@ export async function runOptimization(
 	directions: Record<string, string>,
 	constraints?: Record<string, Record<string, number>>,
 	nSuggestions: number = 5,
+	explorationMode: boolean = false,
 ): Promise<any> {
 	return request('/api/analysis/optimize', {
 		method: 'POST',
@@ -54,6 +55,7 @@ export async function runOptimization(
 			directions,
 			constraints: constraints ?? null,
 			n_suggestions: nSuggestions,
+			exploration_mode: explorationMode,
 		}),
 	});
 }
